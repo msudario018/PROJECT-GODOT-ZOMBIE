@@ -1,0 +1,91 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://src/Entities/Zombies/Archetypes/ShamblerWalker.cs" id="1_shambler"]
+[ext_resource type="Script" path="res://src/Core/Components/HealthComponent.cs" id="2_health"]
+[ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/SensorySystem.cs" id="3_sensory"]
+[ext_resource type="Script" path="res://src/Core/Components/AudioEmitterComponent.cs" id="4_audio"]
+[ext_resource type="Script" path="res://src/Core/StateMachine/StateMachine.cs" id="5_fsm"]
+[ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieIdleState.cs" id="6_idle"]
+[ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieAlertState.cs" id="7_alert"]
+[ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieChaseState.cs" id="8_chase"]
+[ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieAttackState.cs" id="9_attack"]
+[ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieHurtState.cs" id="10_hurt"]
+[ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieDeadState.cs" id="11_dead"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_zombie"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_body"]
+radius = 0.4
+height = 1.8
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_zombie"]
+albedo_color = Color(0.35, 0.45, 0.28, 1)
+roughness = 0.85
+
+[sub_resource type="BoxMesh" id="BoxMesh_eye"]
+size = Vector3(0.3, 0.15, 0.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_eye"]
+albedo_color = Color(0.85, 0.2, 0.1, 1)
+
+[node name="Shambler" type="CharacterBody3D"]
+collision_layer = 4
+collision_mask = 7
+script = ExtResource("1_shambler")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_zombie")
+
+[node name="Mesh" type="Node3D" parent="."]
+
+[node name="Body" type="MeshInstance3D" parent="Mesh"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("CapsuleMesh_body")
+surface_material_override/0 = SubResource("StandardMaterial3D_zombie")
+
+[node name="Eyes" type="MeshInstance3D" parent="Mesh"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, -0.35)
+mesh = SubResource("BoxMesh_eye")
+surface_material_override/0 = SubResource("StandardMaterial3D_eye")
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+MaxHealth = 80.0
+
+[node name="SensorySystem" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.4, 0)
+script = ExtResource("3_sensory")
+SightRange = 14.0
+SightAngleDeg = 110.0
+
+[node name="AudioEmitterComponent" type="Node3D" parent="."]
+script = ExtResource("4_audio")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="."]
+target_desired_distance = 1.2
+path_max_distance = 3.0
+
+[node name="StateMachine" type="Node" parent="."]
+script = ExtResource("5_fsm")
+InitialState = NodePath("Idle")
+
+[node name="Idle" type="Node" parent="StateMachine"]
+script = ExtResource("6_idle")
+
+[node name="Alert" type="Node" parent="StateMachine"]
+script = ExtResource("7_alert")
+
+[node name="Chase" type="Node" parent="StateMachine"]
+script = ExtResource("8_chase")
+
+[node name="Attack" type="Node" parent="StateMachine"]
+script = ExtResource("9_attack")
+
+[node name="Hurt" type="Node" parent="StateMachine"]
+script = ExtResource("10_hurt")
+
+[node name="Dead" type="Node" parent="StateMachine"]
+script = ExtResource("11_dead")

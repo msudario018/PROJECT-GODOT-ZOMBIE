@@ -1,0 +1,191 @@
+[gd_scene load_steps=19 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/entities/player/Player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://src/Core/Vision/FogOfWarSystem.cs" id="2_fogsystem"]
+[ext_resource type="Script" path="res://src/Core/Vision/FogOfWarRenderer.cs" id="3_fogrenderer"]
+[ext_resource type="Script" path="res://src/Core/Vision/VisionOccluder.cs" id="4_occluder"]
+[ext_resource type="Script" path="res://src/Core/Spatial/FlowFieldNavigator.cs" id="5_flowfield"]
+[ext_resource type="Script" path="res://src/World/Environment/AcousticPropagation.cs" id="6_acoustic"]
+[ext_resource type="PackedScene" path="res://scenes/entities/zombies/archetypes/Shambler.tscn" id="7_shambler"]
+[ext_resource type="Script" path="res://src/UI/HUD/TestArenaHUD.cs" id="8_hud"]
+[ext_resource type="Script" path="res://src/Systems/Building/BuildingSystem.cs" id="9_building"]
+[ext_resource type="PackedScene" path="res://scenes/world/defenses/walls/ScrapWoodFence.tscn" id="10_fence"]
+[ext_resource type="PackedScene" path="res://scenes/world/defenses/walls/WoodenDoor.tscn" id="11_door"]
+
+[sub_resource type="Environment" id="Environment_arena"]
+background_mode = 1
+background_color = Color(0.1, 0.11, 0.13, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.4, 0.45, 0.5, 1)
+ambient_light_energy = 0.15
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.2
+fog_enabled = false
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+size = Vector2(50, 50)
+
+[sub_resource type="StandardMaterial3D" id="Material_ground"]
+albedo_color = Color(0.2, 0.22, 0.25, 1)
+roughness = 0.9
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(50, 0.2, 50)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wall_ns"]
+size = Vector3(52, 4, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wall_ew"]
+size = Vector3(1, 4, 52)
+
+[sub_resource type="BoxMesh" id="BoxMesh_obstacle"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="StandardMaterial3D" id="Material_obstacle"]
+albedo_color = Color(0.65, 0.58, 0.5, 1)
+roughness = 0.7
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_obstacle"]
+size = Vector3(2, 2, 2)
+
+[node name="TestArena" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_arena")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, -0.353553, 0.612372, 0, 0.866025, 0.5, -0.707107, -0.353553, 0.612372, 0, 20, 0)
+light_color = Color(1.0, 0.96, 0.88, 1)
+light_energy = 1.3
+shadow_enabled = true
+directional_shadow_mode = 1
+
+[node name="AcousticPropagation" type="Node" parent="."]
+script = ExtResource("6_acoustic")
+
+[node name="FlowFieldNavigator" type="Node3D" parent="."]
+script = ExtResource("5_flowfield")
+TargetPath = NodePath("../Player")
+
+[node name="BuildingSystem" type="Node3D" parent="."]
+script = ExtResource("9_building")
+
+[node name="Ground" type="StaticBody3D" parent="."]
+
+[node name="GroundMesh" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("PlaneMesh_ground")
+surface_material_override/0 = SubResource("Material_ground")
+
+[node name="GroundCollision" type="CollisionShape3D" parent="Ground"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+shape = SubResource("BoxShape3D_ground")
+
+[node name="WallNorth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, -25.5)
+
+[node name="Collision" type="CollisionShape3D" parent="WallNorth"]
+shape = SubResource("BoxShape3D_wall_ns")
+
+[node name="VisionOccluder" type="Node3D" parent="WallNorth"]
+script = ExtResource("4_occluder")
+
+[node name="WallSouth" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 25.5)
+
+[node name="Collision" type="CollisionShape3D" parent="WallSouth"]
+shape = SubResource("BoxShape3D_wall_ns")
+
+[node name="VisionOccluder" type="Node3D" parent="WallSouth"]
+script = ExtResource("4_occluder")
+
+[node name="WallEast" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.5, 2, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="WallEast"]
+shape = SubResource("BoxShape3D_wall_ew")
+
+[node name="VisionOccluder" type="Node3D" parent="WallEast"]
+script = ExtResource("4_occluder")
+
+[node name="WallWest" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25.5, 2, 0)
+
+[node name="Collision" type="CollisionShape3D" parent="WallWest"]
+shape = SubResource("BoxShape3D_wall_ew")
+
+[node name="VisionOccluder" type="Node3D" parent="WallWest"]
+script = ExtResource("4_occluder")
+
+[node name="Obstacle1" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6, 1, 6)
+
+[node name="Mesh" type="MeshInstance3D" parent="Obstacle1"]
+mesh = SubResource("BoxMesh_obstacle")
+surface_material_override/0 = SubResource("Material_obstacle")
+
+[node name="Collision" type="CollisionShape3D" parent="Obstacle1"]
+shape = SubResource("BoxShape3D_obstacle")
+
+[node name="VisionOccluder" type="Node3D" parent="Obstacle1"]
+script = ExtResource("4_occluder")
+
+[node name="Obstacle2" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 1, -4)
+
+[node name="Mesh" type="MeshInstance3D" parent="Obstacle2"]
+mesh = SubResource("BoxMesh_obstacle")
+surface_material_override/0 = SubResource("Material_obstacle")
+
+[node name="Collision" type="CollisionShape3D" parent="Obstacle2"]
+shape = SubResource("BoxShape3D_obstacle")
+
+[node name="VisionOccluder" type="Node3D" parent="Obstacle2"]
+script = ExtResource("4_occluder")
+
+[node name="Obstacle3" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 1, -10)
+
+[node name="Mesh" type="MeshInstance3D" parent="Obstacle3"]
+mesh = SubResource("BoxMesh_obstacle")
+surface_material_override/0 = SubResource("Material_obstacle")
+
+[node name="Collision" type="CollisionShape3D" parent="Obstacle3"]
+shape = SubResource("BoxShape3D_obstacle")
+
+[node name="VisionOccluder" type="Node3D" parent="Obstacle3"]
+script = ExtResource("4_occluder")
+
+[node name="DemoFenceLeft" parent="." instance=ExtResource("10_fence")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0, 4)
+
+[node name="DemoDoor" parent="." instance=ExtResource("11_door")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 4)
+
+[node name="DemoFenceRight" parent="." instance=ExtResource("10_fence")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
+
+[node name="FogOfWar" type="Node3D" parent="."]
+
+[node name="FogOfWarSystem" type="Node" parent="FogOfWar"]
+script = ExtResource("2_fogsystem")
+
+[node name="FogOfWarRenderer" type="MeshInstance3D" parent="FogOfWar"]
+script = ExtResource("3_fogrenderer")
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+
+[node name="Shambler1" parent="." instance=ExtResource("7_shambler")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 0, 10)
+
+[node name="Shambler2" parent="." instance=ExtResource("7_shambler")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 0, 12)
+
+[node name="Shambler3" parent="." instance=ExtResource("7_shambler")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, 8)
+
+[node name="Shambler4" parent="." instance=ExtResource("7_shambler")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, -12)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("8_hud")
