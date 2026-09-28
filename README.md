@@ -3,11 +3,11 @@
 [![Engine](https://img.shields.io/badge/Godot-4.7_Forward%2B-blue.svg)](https://godotengine.org/)
 [![Framework](https://img.shields.io/badge/.NET-8.0_C%23-purple.svg)](https://dotnet.microsoft.com/)
 [![Physics](https://img.shields.io/badge/Physics-Jolt_3D-green.svg)](https://github.com/godot-jolt/godot-jolt)
-[![Status](https://img.shields.io/badge/Status-Phase_3_Complete-success.svg)](#current-progress--phase-status)
+[![Status](https://img.shields.io/badge/Status-Phase_4_Complete-success.svg)](#current-progress--phase-status)
 
 A hardcore, mechanically rich post-apocalyptic zombie survival sandbox built in **Godot 4.7 (.NET / C#)** with true 2.5D isometric perspective, Jolt Physics, and Forward+ D3D12 rendering.
 
-Every system—from structural physics and horde flow-fields to acoustic propagation and off-grid electrical islanding—is engineered as an interconnected, event-driven simulation.
+Every system—from structural physics and horde flow-fields to acoustic propagation, ballistics, and off-grid electrical networks—is engineered as an interconnected, event-driven simulation.
 
 ---
 
@@ -17,15 +17,19 @@ Every system—from structural physics and horde flow-fields to acoustic propaga
 | :--- | :--- | :--- |
 | **`WASD`** | Move (Isometric) | Smooth acceleration/friction physics aligned with camera diamond grid. |
 | **`Shift`** | Sprint | Increases speed by $1.6\times$; emits louder $12\text{ m}$ footstep acoustic radius. |
-| **`LMB / Space`** | Melee Attack | Swings weapon toward mouse cursor ($110^\circ$ arc, $2.4\text{ m}$ reach, $35\text{ HP}$ blunt damage, $7.0\text{ m/s}$ knockback). |
+| **`4`** | Equip Crowbar | Slot 1: Melee weapon ($35\text{ HP}$ blunt damage, $2.4\text{ m}$ reach, quiet $6\text{ m}$ noise radius). |
+| **`5`** | Equip M9 Pistol | Slot 2: Ranged 9mm handgun ($42\text{ HP}$ ballistic damage, 15-round mag, $45\text{ m}$ gunshot acoustic signature). |
+| **`6`** | Equip Shotgun | Slot 3: Remington 870 ($8\text{ pellets} \times 13 = 104\text{ HP}$ max, $12^\circ$ spread, $65\text{ m}$ massive gunshot noise). |
+| **`Q`** | Cycle Weapon | Cycles sequentially through equipped melee and ranged arsenal. |
+| **`LMB`** | Attack / Fire | Performs melee swing or fires ranged weapon toward mouse cursor. |
+| **`R`** | Reload / Rotate | Reloads equipped firearm (or rotates structure preview if building mode active). |
+| **`F`** | Flashlight | Toggles narrow $30^\circ$, $25\text{ m}$ vision cone & 3D spotlight (consumes battery). |
 | **`E`** | Interact | Opens or closes nearby doors, dynamically updating navigation obstacles and vision occlusion. |
 | **`1`** | Build Scrap Fence | Selects Tier 1 Scrap Wood Fence ($250\text{ HP}$, opaque, flammable). |
 | **`2`** | Build Chain Link Wall | Selects Tier 2 Chain Link Wall ($500\text{ HP}$, see-through steel wire mesh). |
 | **`3`** | Build Reinforced Door | Selects interactive wooden doorway with swinging leaf and locking support. |
-| **`R`** | Rotate Preview | Rotates ghost placement preview by $90^\circ$. |
 | **`RMB / Esc`** | Cancel Build | Cancels active building placement mode. |
-| **`F1`** | Toggle Fog-of-War | Instantly toggles FoW overlay ON / OFF for debugging and full-scene inspection. |
-| **`F`** | Flashlight | Toggles narrow $30^\circ$, $25\text{ m}$ forward vision cone. |
+| **`F1`** | Toggle Fog-of-War | Instantly toggles FoW overlay ON / OFF for debugging and scene inspection. |
 
 ---
 
@@ -60,21 +64,41 @@ Every system—from structural physics and horde flow-fields to acoustic propaga
   $$\text{Accumulated Pressure} = \sum \text{force} \cdot (1 + 0.05 \cdot N)$$
   Exceeding `PressureThreshold` delivers structural burst damage to walls until collapse.
 
+### ✅ Phase 4: Combat & Visibility Depth — COMPLETED
+- **Multi-Weapon Combat System (`PlayerCombat.cs` & `WeaponData.cs`):**
+  - **Rusty Crowbar (Melee):** $35\text{ HP}$ blunt damage, $2.4\text{ m}$ range, $7.0\text{ m/s}$ knockback, $6\text{ m}$ silent acoustic radius.
+  - **M9 Service Pistol (9mm Ballistic):** $42\text{ HP}$ per round, 15-round magazine, 45 reserve, $1.6\text{ s}$ reload, $45\text{ m}$ acoustic gunshot footprint.
+  - **Remington 870 Shotgun (12G Ballistic):** 8 pellets $\times 13\text{ HP}$ ($104\text{ HP}$ point-blank maximum), $12^\circ$ spread cone, 6-round tube, 24 reserve, $65\text{ m}$ gunshot acoustic signature.
+- **Ballistics & Visual FX (`ProjectileManager.cs`):** High-speed visual bullet tracer rendering via cylinder mesh beam tweening and procedural surface impact sparks.
+- **Sprinter / Runner Zombie Archetype (`SprinterRunner.cs`, `Sprinter.tscn`):**
+  - Fast, erratic sprint speed ($4.8\text{ m/s}$).
+  - Fragile durability ($60\text{ HP}$), aggressive sensory sight cone ($22\text{ m}$, $120^\circ$).
+  - Rapid $18\text{ damage}$ strikes with $1.0\text{ s}$ cooldown; immediately homes in on gunshots and footsteps.
+- **Bloater / Boomer Zombie Archetype (`BloaterBoomer.cs`, `Bloater.tscn`):**
+  - High durability ($160\text{ HP}$), slow gait ($1.2\text{ m/s}$), heavy structural push ($2.5\text{ force}$).
+  - Suicide detonation fuse triggering when within $1.8\text{ m}$ proximity of targets or upon death.
+  - Generates a toxic explosive blast ($50\text{ damage}$, $4.5\text{ m}$ AoE) that shatters nearby walls, players, and fellow zombies.
+  - Emits an extreme $65\text{ m}$ acoustic explosion shockwave alerting the surrounding area.
+- **Dynamic Flashlight & Battery Simulation (`FieldOfView.cs` & `SpotLight3D`):**
+  - Real-time battery drain ($2\%/\text{s}$ while active) with automatic shutoff at $0\%$ and passive trickle recharge ($0.5\%/\text{s}$).
+  - Rotates both the 3D dynamic `SpotLight3D` and the narrow line-of-sight FoW cone toward the mouse aim vector.
+- **Comprehensive Debug HUD (`TestArenaHUD.cs`):** Real-time monitoring of HP, equipped weapon, current magazine / reserve ammunition, reload completion progress, flashlight battery percentage, active zombie counts, and acoustic event log.
+
 ---
 
 ## 🗺️ Architectural Roadmap
 
-| Phase | Milestone | Key Features |
-| :--- | :--- | :--- |
-| **Phase 1** | Foundation | Scaffolding, EventBus, StateMachine, SpatialGrid, Isometric Camera, FoW shader, Health system |
-| **Phase 2** | Zombies & Navigation | FlowFieldNavigator, SensorySystem, Acoustic propagation, Shambler archetype, Melee combat |
-| **Phase 3** | Building & NavObstacles | Grid building, Scrap & Chain Link walls, Interactive doors, Dynamic NavObstacles, Barricade degradation |
-| **Phase 4** | Combat & Visibility Depth | Ranged weapons, ballistic projectiles, ammo, Sprinter/Bloater archetypes, flashlight battery drain |
-| **Phase 5** | Survival & Economy | Inventory grid, container searching, hunger/thirst/stamina, corpse rot lifecycle & miasma aura |
-| **Phase 6** | Power Grid & Islanding | Generators, battery banks, inverters, BFS sub-grid isolation, powered defenses (fences, turrets, lights) |
-| **Phase 7** | NPCs & Hostile Bandits | Survivor AI, camp morale, hostile human raiders (BanditBase) with cover-seeking and flanking AI |
-| **Phase 8** | Full Content Complete | All 9 zombie archetypes, all 7 survivor roles, Tier 3 warlord bandits, 30 building variations |
-| **Phase 9** | Polish & Optimization | World events, weather/seasons, save/load serialization, flow-field thread pooling, release candidate |
+| Phase | Milestone | Status | Key Features |
+| :--- | :--- | :--- | :--- |
+| **Phase 1** | Foundation | ✅ Completed | Scaffolding, EventBus, StateMachine, SpatialGrid, Isometric Camera, FoW shader, Health system |
+| **Phase 2** | Zombies & Navigation | ✅ Completed | FlowFieldNavigator, SensorySystem, Acoustic propagation, Shambler archetype, Melee combat |
+| **Phase 3** | Building & NavObstacles | ✅ Completed | Grid building, Scrap & Chain Link walls, Interactive doors, Dynamic NavObstacles, Barricade degradation |
+| **Phase 4** | Combat & Visibility Depth | ✅ Completed | Multi-weapon inventory, ballistics, tracers, Sprinter/Bloater archetypes, flashlight battery simulation |
+| **Phase 5** | Survival & Economy | 🔲 Planned | Inventory grid, container searching, hunger/thirst/stamina, corpse rot lifecycle & miasma aura |
+| **Phase 6** | Power Grid & Islanding | 🔲 Planned | Generators, battery banks, inverters, BFS sub-grid isolation, powered defenses (fences, turrets, lights) |
+| **Phase 7** | NPCs & Hostile Bandits | 🔲 Planned | Survivor AI, camp morale, hostile human raiders (BanditBase) with cover-seeking and flanking AI |
+| **Phase 8** | Full Content Complete | 🔲 Planned | All 9 zombie archetypes, all 7 survivor roles, Tier 3 warlord bandits, 30 building variations |
+| **Phase 9** | Polish & Optimization | 🔲 Planned | World events, weather/seasons, save/load serialization, flow-field thread pooling, release candidate |
 
 ---
 
@@ -89,8 +113,11 @@ res://
 │       └── fog_of_war.gdshader             # GPU visibility overlay shader
 ├── scenes/
 │   ├── entities/
-│   │   ├── player/Player.tscn              # Player character with camera, FoW, combat
-│   │   └── zombies/archetypes/Shambler.tscn# Shambler zombie with AI state machine
+│   │   ├── player/Player.tscn              # Player with camera, FoW, combat, spotlight
+│   │   └── zombies/archetypes/
+│   │       ├── Shambler.tscn               # Shambler walker archetype
+│   │       ├── Sprinter.tscn               # Fast runner archetype
+│   │       └── Bloater.tscn                # Exploding boomer archetype
 │   ├── levels/TestArena.tscn               # Testing sandbox with lighting, barricades & HUD
 │   └── world/defenses/walls/
 │       ├── ScrapWoodFence.tscn             # Tier 1 wall segment
@@ -109,10 +136,11 @@ res://
     │   ├── Player/ (PlayerController, PlayerCombat, PlayerInteraction)
     │   └── Zombies/
     │       ├── ZombieBase.cs
-    │       ├── Archetypes/ (ShamblerWalker.cs)
+    │       ├── Archetypes/ (ShamblerWalker.cs, SprinterRunner.cs, BloaterBoomer.cs)
     │       └── ZombieAI/ (SensorySystem, States: Idle, Alert, Chase, Attack, Hurt, Dead)
     ├── Systems/
-    │   └── Building/ (BuildingSystem, BuildingGhost)
+    │   ├── Building/ (BuildingSystem, BuildingGhost)
+    │   └── Combat/ (WeaponData, ProjectileManager)
     ├── UI/
     │   └── HUD/ (TestArenaHUD)
     └── World/

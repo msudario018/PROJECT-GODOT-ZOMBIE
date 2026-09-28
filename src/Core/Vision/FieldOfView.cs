@@ -29,6 +29,9 @@ public partial class FieldOfView : Node3D
     [Export] public float FlashlightRange = 25f;
     [Export] public float FlashlightAngle = 30f;
     [Export] public int FlashlightRayCount = 24;
+    [Export] public float MaxBattery = 100.0f;
+    [Export] public float BatteryDrainRate = 2.0f; // drains 2% per second while on
+    [Export] public float BatteryRechargeRate = 0.5f;
 
     [ExportGroup("Proximity")]
     [Export] public float ProximityRadius = 3.0f;
@@ -38,10 +41,13 @@ public partial class FieldOfView : Node3D
 
     /// <summary>Whether the flashlight is currently active.</summary>
     public bool IsFlashlightActive { get; set; }
+    public float CurrentBattery { get; private set; } = 100.0f;
+    public float BatteryPercent => MaxBattery > 0 ? CurrentBattery / MaxBattery : 0f;
 
     // ── References ─────────────────────────────────────────────────
     private FogOfWarSystem? _fogSystem;
     private PlayerController? _player;
+    private SpotLight3D? _spotLight;
 
     // ── Constants ──────────────────────────────────────────────────
     /// <summary>Collision layer 4 bitmask for vision-blocking geometry.</summary>
@@ -51,6 +57,7 @@ public partial class FieldOfView : Node3D
     {
         _player = GetParent() as PlayerController;
         _fogSystem = FogOfWarSystem.Instance ?? FindFogOfWarSystem();
+        _spotLight = _player?.GetNodeOrNull<SpotLight3D>("SpotLight3D");
 
         if (_fogSystem != null && _player != null)
         {
@@ -74,19 +81,51 @@ public partial class FieldOfView : Node3D
 
         if (@event.IsActionPressed("flashlight"))
         {
-            IsFlashlightActive = !IsFlashlightActive;
-            GD.Print($"[FieldOfView] Flashlight {(IsFlashlightActive ? "ON" : "OFF")}");
+            if (CurrentBattery > 2.0f || IsFlashlightActive)
+            {
+                IsFlashlightActive = !IsFlashlightActive;
+                GD.Print($"[FieldOfView] Flashlight {(IsFlashlightActive ? "ON" : "OFF")} (Battery: {CurrentBattery:F0}%)");
+            }
         }
     }
 
     public override void _PhysicsProcess(double delta)
     {
+        float dt = (float)delta;
+
+        // Battery simulation
+        if (IsFlashlightActive)
+        {
+            CurrentBattery = Mathf.Max(0f, CurrentBattery - BatteryDrainRate * dt);
+            if (CurrentBattery <= 0f)
+            {
+                IsFlashlightActive = false;
+                GD.Print("[FieldOfView] Flashlight battery depleted!");
+            }
+        }
+        else if (CurrentBattery < MaxBattery)
+        {
+            CurrentBattery = Mathf.Min(MaxBattery, CurrentBattery + BatteryRechargeRate * dt);
+        }
+
         _fogSystem ??= FogOfWarSystem.Instance ?? FindFogOfWarSystem();
         if (_fogSystem == null || _player == null) return;
 
         var playerPos = _player.GlobalPosition;
         var aimDir = _player.GetAimDirection();
         float facingAngle = Mathf.Atan2(aimDir.X, aimDir.Z);
+
+        // Update 3D Spotlight visual
+        _spotLight ??= _player.GetNodeOrNull<SpotLight3D>("SpotLight3D");
+        if (_spotLight != null)
+        {
+            _spotLight.Visible = IsFlashlightActive;
+            if (IsFlashlightActive)
+            {
+                _spotLight.GlobalPosition = playerPos + Vector3.Up * 1.2f;
+                _spotLight.Rotation = new Vector3(0f, facingAngle + Mathf.Pi, 0f);
+            }
+        }
 
         var visibleCells = new HashSet<Vector2I>();
         var spaceState = GetWorld3D().DirectSpaceState;
@@ -98,7 +137,7 @@ public partial class FieldOfView : Node3D
         CastCone(spaceState, playerPos, facingAngle, VisionAngle, VisionRange, VisionRayCount, visibleCells);
 
         // 3. Optional flashlight cone (narrow, long)
-        if (IsFlashlightActive)
+        if (IsFlashlightActive && CurrentBattery > 0f)
             CastCone(spaceState, playerPos, facingAngle, FlashlightAngle, FlashlightRange, FlashlightRayCount, visibleCells);
 
         _fogSystem.UpdateVisibility(visibleCells);

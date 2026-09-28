@@ -1,4 +1,4 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/entities/player/Player.tscn" id="1_player"]
 [ext_resource type="Script" path="res://src/Core/Vision/FogOfWarSystem.cs" id="2_fogsystem"]
@@ -11,6 +11,9 @@
 [ext_resource type="Script" path="res://src/Systems/Building/BuildingSystem.cs" id="9_building"]
 [ext_resource type="PackedScene" path="res://scenes/world/defenses/walls/ScrapWoodFence.tscn" id="10_fence"]
 [ext_resource type="PackedScene" path="res://scenes/world/defenses/walls/WoodenDoor.tscn" id="11_door"]
+[ext_resource type="Script" path="res://src/Systems/Combat/ProjectileManager.cs" id="12_projectiles"]
+[ext_resource type="PackedScene" path="res://scenes/entities/zombies/archetypes/Sprinter.tscn" id="13_sprinter"]
+[ext_resource type="PackedScene" path="res://scenes/entities/zombies/archetypes/Bloater.tscn" id="14_bloater"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -187,5 +190,15 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, 8)
 [node name="Shambler4" parent="." instance=ExtResource("7_shambler")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 0, -12)
 
+[node name="ProjectileManager" type="Node3D" parent="."]
+script = ExtResource("12_projectiles")
+
+[node name="Sprinter1" parent="." instance=ExtResource("13_sprinter")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 0, -8)
+
+[node name="Bloater1" parent="." instance=ExtResource("14_bloater")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 0, -14)
+
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("8_hud")
+

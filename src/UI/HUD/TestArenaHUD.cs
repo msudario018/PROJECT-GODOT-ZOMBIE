@@ -1,21 +1,29 @@
 using Godot;
 using ZombieApocalypse.Core.Autoloads;
 using ZombieApocalypse.Core.Components;
+using ZombieApocalypse.Core.Vision;
 using ZombieApocalypse.Entities.Player;
 
 namespace ZombieApocalypse.UI.HUD;
 
 /// <summary>
-/// Debug HUD overlay for testing Phase 1 & 2 systems:
-/// Player Health, Movement, Acoustic Footsteps, Melee Combat, and Zombie counts.
+/// Debug HUD overlay for testing Phase 1 - 4 systems:
+/// Player Health, Movement, Combat (Weapons & Ammo), Vision (FoW & Flashlight Battery),
+/// Defenses & Building, and Zombie counts.
 /// </summary>
 public partial class TestArenaHUD : CanvasLayer
 {
     private ProgressBar _healthBar = null!;
     private Label _healthLabel = null!;
+    private Label _weaponLabel = null!;
+    private Label _ammoLabel = null!;
+    private Label _flashlightLabel = null!;
     private Label _zombieCountLabel = null!;
     private Label _statusLabel = null!;
+
     private HealthComponent? _playerHealth;
+    private PlayerCombat? _playerCombat;
+    private FieldOfView? _playerFov;
 
     public override void _Ready()
     {
@@ -30,6 +38,16 @@ public partial class TestArenaHUD : CanvasLayer
                 _playerHealth.HealthChanged += OnPlayerHealthChanged;
                 UpdateHealthDisplay(_playerHealth.CurrentHealth, _playerHealth.MaxHealth);
             }
+
+            _playerCombat = player.GetNodeOrNull<PlayerCombat>("PlayerCombat");
+            if (_playerCombat != null)
+            {
+                _playerCombat.WeaponChanged += OnWeaponChanged;
+                _playerCombat.AmmoChanged += OnAmmoChanged;
+                UpdateWeaponDisplay(_playerCombat.CurrentWeapon.WeaponName, _playerCombat.CurrentMag, _playerCombat.CurrentReserve);
+            }
+
+            _playerFov = player.GetNodeOrNull<FieldOfView>("FieldOfView");
         }
 
         if (EventBus.Instance != null)
@@ -43,13 +61,32 @@ public partial class TestArenaHUD : CanvasLayer
     {
         int zombieCount = GetTree().GetNodesInGroup("zombies").Count;
         _zombieCountLabel.Text = $"Active Zombies: {zombieCount}";
+
+        // Update Flashlight Status & Battery
+        if (_playerFov != null)
+        {
+            string flStatus = _playerFov.IsFlashlightActive ? "ACTIVE" : "OFF";
+            int batt = Mathf.RoundToInt(_playerFov.CurrentBattery);
+            _flashlightLabel.Text = $"Flashlight: {flStatus} ({batt}%)";
+            _flashlightLabel.AddThemeColorOverride("font_color", _playerFov.IsFlashlightActive 
+                ? (batt < 20 ? new Color(1f, 0.4f, 0.4f) : new Color(1f, 0.95f, 0.5f))
+                : new Color(0.7f, 0.7f, 0.7f));
+        }
+
+        // Update Reloading indicator
+        if (_playerCombat != null && _playerCombat.IsReloading)
+        {
+            int pct = Mathf.RoundToInt(_playerCombat.ReloadProgress * 100f);
+            _ammoLabel.Text = $"Reloading... ({pct}%)";
+            _ammoLabel.AddThemeColorOverride("font_color", new Color(1f, 0.7f, 0.2f));
+        }
     }
 
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is InputEventKey key && key.Pressed && !key.Echo && key.Keycode == Key.F1)
         {
-            var renderer = ZombieApocalypse.Core.Vision.FogOfWarRenderer.Instance;
+            var renderer = FogOfWarRenderer.Instance;
             if (renderer != null)
             {
                 renderer.ToggleFog();
@@ -72,12 +109,12 @@ public partial class TestArenaHUD : CanvasLayer
         rootPanel.AddChild(margin);
 
         var vbox = new VBoxContainer();
-        vbox.AddThemeConstantOverride("separation", 8);
+        vbox.AddThemeConstantOverride("separation", 6);
         margin.AddChild(vbox);
 
         // Title
         var title = new Label();
-        title.Text = "PROJECT ZOMBIE - PHASE 2 TEST ARENA";
+        title.Text = "PROJECT ZOMBIE - PHASE 4 COMBAT & VISION";
         title.AddThemeFontSizeOverride("font_size", 16);
         title.AddThemeColorOverride("font_color", new Color(0.9f, 0.75f, 0.3f));
         vbox.AddChild(title);
@@ -103,6 +140,27 @@ public partial class TestArenaHUD : CanvasLayer
         _healthLabel.Text = "100 / 100";
         hpBox.AddChild(_healthLabel);
 
+        // Combat Info (Weapon & Ammo)
+        var combatBox = new HBoxContainer();
+        combatBox.AddThemeConstantOverride("separation", 12);
+        vbox.AddChild(combatBox);
+
+        _weaponLabel = new Label();
+        _weaponLabel.Text = "Weapon: Rusty Crowbar";
+        _weaponLabel.AddThemeColorOverride("font_color", new Color(0.3f, 0.9f, 0.6f));
+        combatBox.AddChild(_weaponLabel);
+
+        _ammoLabel = new Label();
+        _ammoLabel.Text = "Ammo: --";
+        _ammoLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.85f, 0.4f));
+        combatBox.AddChild(_ammoLabel);
+
+        // Flashlight Battery Info
+        _flashlightLabel = new Label();
+        _flashlightLabel.Text = "Flashlight: OFF (100%)";
+        _flashlightLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.7f));
+        vbox.AddChild(_flashlightLabel);
+
         // Zombie count
         _zombieCountLabel = new Label();
         _zombieCountLabel.Text = "Active Zombies: 0";
@@ -117,7 +175,13 @@ public partial class TestArenaHUD : CanvasLayer
 
         // Controls help
         var controlsLabel = new Label();
-        controlsLabel.Text = "Controls:\n[WASD] Move (Iso)\n[Shift] Sprint (Loud Noise!)\n[LMB / Space] Melee Attack\n[E] Interact (Open/Close Door)\n[1] Build Scrap Fence | [2] Chain Link | [3] Door\n[R] Rotate Building | [RMB/Esc] Cancel\n[F1] Toggle Fog of War | [F] Flashlight";
+        controlsLabel.Text = "Controls:\n" +
+            "[WASD] Move (Iso) | [Shift] Sprint (Loud Noise!)\n" +
+            "[4] Crowbar | [5] M9 Pistol | [6] Shotgun | [Q] Cycle Weapon\n" +
+            "[LMB] Attack / Fire | [R] Reload Weapon\n" +
+            "[F] Flashlight Cone | [F1] Toggle Fog of War\n" +
+            "[E] Interact (Open/Close Door)\n" +
+            "[1] Wood Fence | [2] Chain Link | [3] Door | [RMB] Cancel Build";
         controlsLabel.AddThemeFontSizeOverride("font_size", 12);
         controlsLabel.AddThemeColorOverride("font_color", new Color(0.75f, 0.75f, 0.75f));
         vbox.AddChild(controlsLabel);
@@ -132,9 +196,36 @@ public partial class TestArenaHUD : CanvasLayer
         _healthLabel.Text = $"{Mathf.RoundToInt(current)} / {Mathf.RoundToInt(max)}";
     }
 
+    private void UpdateWeaponDisplay(string weaponName, int mag, int reserve)
+    {
+        _weaponLabel.Text = $"Weapon: {weaponName}";
+        if (_playerCombat != null && _playerCombat.CurrentWeapon.IsRanged)
+        {
+            _ammoLabel.Text = $"Ammo: {mag} / {reserve}";
+            _ammoLabel.AddThemeColorOverride("font_color", mag <= 2 ? new Color(1f, 0.3f, 0.3f) : new Color(1.0f, 0.85f, 0.4f));
+        }
+        else
+        {
+            _ammoLabel.Text = "Ammo: Melee (Infinite)";
+            _ammoLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.7f));
+        }
+    }
+
     private void OnPlayerHealthChanged(float current, float max)
     {
         UpdateHealthDisplay(current, max);
+    }
+
+    private void OnWeaponChanged(string weaponName)
+    {
+        if (_playerCombat != null)
+            UpdateWeaponDisplay(weaponName, _playerCombat.CurrentMag, _playerCombat.CurrentReserve);
+    }
+
+    private void OnAmmoChanged(int currentMag, int reserve)
+    {
+        if (_playerCombat != null)
+            UpdateWeaponDisplay(_playerCombat.CurrentWeapon.WeaponName, currentMag, reserve);
     }
 
     private void OnSoundEmitted(Vector3 pos, float radius, ZombieApocalypse.Core.Data.AudioSourceType type)
