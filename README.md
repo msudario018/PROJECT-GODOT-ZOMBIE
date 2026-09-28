@@ -23,7 +23,7 @@ Every system—from structural physics and horde flow-fields to acoustic propaga
 | **`Q`** | Cycle Weapon | Cycles sequentially through equipped melee and ranged arsenal. |
 | **`LMB`** | Attack / Fire | Performs melee swing or fires ranged weapon toward mouse cursor. |
 | **`R`** | Reload / Rotate | Reloads equipped firearm (or rotates structure preview if building mode active). |
-| **`F`** | Flashlight | Toggles narrow $30^\circ$, $25\text{ m}$ vision cone & 3D spotlight (consumes battery). |
+| **`F`** | Flashlight | Toggles $52^\circ$ wide, $25\text{ m}$ piercing beam & SpotLight3D with ground puddle (consumes battery). |
 | **`E`** | Interact | Opens or closes nearby doors, dynamically updating navigation obstacles and vision occlusion. |
 | **`1`** | Build Scrap Fence | Selects Tier 1 Scrap Wood Fence ($250\text{ HP}$, opaque, flammable). |
 | **`2`** | Build Chain Link Wall | Selects Tier 2 Chain Link Wall ($500\text{ HP}$, see-through steel wire mesh). |

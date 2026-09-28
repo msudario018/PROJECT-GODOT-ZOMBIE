@@ -22,7 +22,7 @@ public partial class FogOfWarRenderer : MeshInstance3D
     // ── Configuration ──────────────────────────────────────────────
     [Export] public float FogPlaneHeight = 2.5f;
     [Export] public float FogPlanePadding = 2.0f;
-    [Export] public bool FogEnabled = false;
+    [Export] public bool FogEnabled = true;
 
     // ── References ─────────────────────────────────────────────────
     private FogOfWarSystem? _fogSystem;

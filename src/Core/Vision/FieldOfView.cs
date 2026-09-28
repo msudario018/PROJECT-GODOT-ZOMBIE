@@ -21,14 +21,15 @@ public partial class FieldOfView : Node3D
 {
     // ── Configuration ──────────────────────────────────────────────
     [ExportGroup("Vision Cone")]
-    [Export] public float VisionRange = 15f;
+    [Export] public float VisionRange = 8f;
     [Export] public float VisionAngle = 120f;
     [Export] public int VisionRayCount = 72;
 
     [ExportGroup("Flashlight")]
+    [Export] public float FlashlightEnergy = 5.0f;
     [Export] public float FlashlightRange = 25f;
-    [Export] public float FlashlightAngle = 30f;
-    [Export] public int FlashlightRayCount = 24;
+    [Export] public float FlashlightAngle = 52f;
+    [Export] public int FlashlightRayCount = 48;
     [Export] public float MaxBattery = 100.0f;
     [Export] public float BatteryDrainRate = 2.0f; // drains 2% per second while on
     [Export] public float BatteryRechargeRate = 0.5f;
@@ -40,7 +41,7 @@ public partial class FieldOfView : Node3D
     [Export] public float RayHeight = 1.0f;
 
     /// <summary>Whether the flashlight is currently active.</summary>
-    public bool IsFlashlightActive { get; set; }
+    public bool IsFlashlightActive { get; set; } = true;
     public float CurrentBattery { get; private set; } = 100.0f;
     public float BatteryPercent => MaxBattery > 0 ? CurrentBattery / MaxBattery : 0f;
 
@@ -59,9 +60,18 @@ public partial class FieldOfView : Node3D
         _fogSystem = FogOfWarSystem.Instance ?? FindFogOfWarSystem();
         _spotLight = _player?.GetNodeOrNull<SpotLight3D>("SpotLight3D");
 
+        if (_spotLight != null)
+        {
+            _spotLight.LightEnergy = FlashlightEnergy;
+            _spotLight.SpotRange = FlashlightRange;
+            _spotLight.SpotAngle = FlashlightAngle * 0.5f;
+            _spotLight.ShadowEnabled = true;
+            _spotLight.Visible = IsFlashlightActive;
+        }
+
         if (_fogSystem != null && _player != null)
         {
-            _fogSystem.RevealArea(_player.GlobalPosition, ProximityRadius + 5.0f);
+            _fogSystem.RevealArea(_player.GlobalPosition, ProximityRadius + 3.0f);
         }
         else if (_fogSystem == null)
         {
@@ -79,7 +89,11 @@ public partial class FieldOfView : Node3D
             FogOfWarRenderer.Instance?.ToggleFog();
         }
 
-        if (@event.IsActionPressed("flashlight"))
+        bool isFlashlightToggled = @event.IsActionPressed("flashlight") ||
+            (@event is InputEventKey fKey && fKey.Pressed && !fKey.Echo &&
+             (fKey.Keycode == Key.F || fKey.PhysicalKeycode == Key.F));
+
+        if (isFlashlightToggled)
         {
             if (CurrentBattery > 2.0f || IsFlashlightActive)
             {
@@ -122,8 +136,23 @@ public partial class FieldOfView : Node3D
             _spotLight.Visible = IsFlashlightActive;
             if (IsFlashlightActive)
             {
-                _spotLight.GlobalPosition = playerPos + Vector3.Up * 1.2f;
-                _spotLight.Rotation = new Vector3(0f, facingAngle + Mathf.Pi, 0f);
+                // Dynamic energy scaling with low-battery warning dimming
+                float batteryFactor = CurrentBattery > 15f ? 1.0f : Mathf.Clamp(CurrentBattery / 15f, 0.25f, 1.0f);
+                _spotLight.LightEnergy = FlashlightEnergy * batteryFactor;
+
+                // Position at player waist/chest height
+                var lightPos = playerPos + Vector3.Up * 1.2f;
+                _spotLight.GlobalPosition = lightPos;
+
+                // Tilt slightly downward towards ground plane (Y=0).
+                // Aiming at a target ~10-14m ahead on Y=0 creates a ~5-7° downward pitch,
+                // projecting a prominent elliptical puddle on the ground plane visible in isometric view.
+                float mouseDist = (_player.GetMouseWorldPosition() - playerPos).Length();
+                float tiltDist = Mathf.Clamp(mouseDist, 8.0f, 16.0f);
+                var lookTarget = playerPos + aimDir * tiltDist;
+                lookTarget.Y = 0f;
+
+                _spotLight.LookAt(lookTarget, Vector3.Up);
             }
         }
 
@@ -133,12 +162,16 @@ public partial class FieldOfView : Node3D
         // 1. Always-visible proximity circle (360°, short range)
         AddCellsInRadius(playerPos, ProximityRadius, visibleCells);
 
-        // 2. Main vision cone
+        // 2. Base vision cone (peripheral twilight vision)
         CastCone(spaceState, playerPos, facingAngle, VisionAngle, VisionRange, VisionRayCount, visibleCells);
 
-        // 3. Optional flashlight cone (narrow, long)
+        // 3. Flashlight cone (synced with SpotLight3D angle and range, clears FoW dynamically along mouse aim direction)
         if (IsFlashlightActive && CurrentBattery > 0f)
-            CastCone(spaceState, playerPos, facingAngle, FlashlightAngle, FlashlightRange, FlashlightRayCount, visibleCells);
+        {
+            float fovAngle = _spotLight != null ? _spotLight.SpotAngle * 2.0f : FlashlightAngle;
+            float fovRange = _spotLight != null ? _spotLight.SpotRange : FlashlightRange;
+            CastCone(spaceState, playerPos, facingAngle, fovAngle, fovRange, FlashlightRayCount, visibleCells);
+        }
 
         _fogSystem.UpdateVisibility(visibleCells);
     }
@@ -160,7 +193,7 @@ public partial class FieldOfView : Node3D
         float angleStep = rayCount > 1 ? totalAngle / (rayCount - 1) : 0f;
         float startAngle = centerAngle - halfAngle;
 
-        var rayOrigin = new Vector3(origin.X, RayHeight, origin.Z);
+        var rayOrigin = new Vector3(origin.X, origin.Y + RayHeight, origin.Z);
 
         for (int i = 0; i < rayCount; i++)
         {

@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.1] - 2026-09-28 — Flashlight & Night Visibility Polish
+
+### Added
+- **Synchronized Fog-of-War Flashlight Clearing (`FieldOfView.cs`, `FogOfWarSystem.cs`):**
+  - Flashlight vision cone dynamically clears the Fog-of-War mask along the player's mouse aim direction.
+  - Automatically synchronizes FoW raycast cone angle ($52^\circ$) and range ($25\text{ m}$) directly with `SpotLight3D` parameters using 48 dense raycasts.
+  - Increased fog reveal transition speed to $20.0/\text{s}$ for instantaneous response when sweeping the mouse.
+- **Downward Ground-Plane Light Puddle (`FieldOfView.cs`, `Player.tscn`):**
+  - Flashlight `SpotLight3D` is positioned at chest height ($Y=1.2\text{ m}$) and aimed down toward the ground plane ($Y=0$) along the mouse aim vector.
+  - Generates a prominent, high-contrast elliptical light puddle clearly visible from the isometric camera angle.
+  - Low-battery warning dimming when battery drops below $15\%$.
+
+### Changed
+- **Evening/Night Lighting Atmosphere (`TestArena.tscn`):**
+  - Reduced `DirectionalLight3D` sun energy from $1.3$ to $0.20$ with a cool moonlight tint (`Color(0.75, 0.82, 0.95)`).
+  - Reduced ambient light energy from $0.15$ to $0.05$ with deep dusk ambient color (`Color(0.25, 0.3, 0.4)`).
+  - Darkened background clear color to night black (`Color(0.06, 0.07, 0.09)`).
+- **Flashlight Intensity & Parameters (`Player.tscn`, `FieldOfView.cs`):**
+  - Boosted `SpotLight3D` light energy to $5.0$, spot range to $25.0\text{ m}$, and spot angle to $26^\circ$ ($52^\circ$ total beam).
+  - Enabled dynamic shadow casting on flashlight beam.
+  - Enabled flashlight by default on arena start.
+- **Controls & Default Overlays (`project.godot`, `FogOfWarRenderer.cs`):**
+  - Registered `flashlight` action in `project.godot` mapped to `Key.F` with physical key fallback in `FieldOfView.cs`.
+  - Re-enabled Fog-of-War overlay by default with `[F1]` debug toggle.
+
+---
+
 ## [0.4.0] - 2026-09-28 — Phase 4: Combat & Visibility Depth
 
 ### Added

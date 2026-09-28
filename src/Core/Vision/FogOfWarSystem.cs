@@ -28,7 +28,7 @@ public partial class FogOfWarSystem : Node
     [Export] public Vector2 WorldSize = new(50f, 50f);
 
     [ExportGroup("Transitions")]
-    [Export] public float RevealSpeed = 10.0f;
+    [Export] public float RevealSpeed = 20.0f;
     [Export] public float HideSpeed = 4.0f;
     [Export] public float ExploredAlpha = 0.65f;
 
@@ -75,7 +75,7 @@ public partial class FogOfWarSystem : Node
         FogTexture = ImageTexture.CreateFromImage(_fogImage);
 
         // Instantly reveal starting area around spawn (world center 0,0)
-        RevealArea(Vector3.Zero, 12.0f);
+        RevealArea(Vector3.Zero, 6.0f);
 
         GD.Print($"[FogOfWarSystem] Grid: {GridWidth}×{GridHeight} cells " +
                  $"(cell={CellSize}m, world={WorldSize.X}×{WorldSize.Y}m). Starting area revealed.");

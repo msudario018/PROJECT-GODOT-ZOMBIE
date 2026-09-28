@@ -17,10 +17,10 @@
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
-background_color = Color(0.1, 0.11, 0.13, 1)
+background_color = Color(0.06, 0.07, 0.09, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.4, 0.45, 0.5, 1)
-ambient_light_energy = 0.15
+ambient_light_color = Color(0.25, 0.3, 0.4, 1)
+ambient_light_energy = 0.05
 tonemap_mode = 2
 glow_enabled = true
 glow_intensity = 0.2
@@ -59,8 +59,8 @@ environment = SubResource("Environment_arena")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.707107, -0.353553, 0.612372, 0, 0.866025, 0.5, -0.707107, -0.353553, 0.612372, 0, 20, 0)
-light_color = Color(1.0, 0.96, 0.88, 1)
-light_energy = 1.3
+light_color = Color(0.75, 0.82, 0.95, 1)
+light_energy = 0.2
 shadow_enabled = true
 directional_shadow_mode = 1
 
