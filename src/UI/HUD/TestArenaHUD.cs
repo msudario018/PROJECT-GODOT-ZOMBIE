@@ -100,16 +100,22 @@ public partial class TestArenaHUD : CanvasLayer
         var rootPanel = new PanelContainer();
         rootPanel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         rootPanel.Position = new Vector2(20, 20);
+        rootPanel.FocusMode = Control.FocusModeEnum.None;
+        rootPanel.MouseFilter = Control.MouseFilterEnum.Ignore;
 
         var margin = new MarginContainer();
         margin.AddThemeConstantOverride("margin_top", 12);
         margin.AddThemeConstantOverride("margin_bottom", 12);
         margin.AddThemeConstantOverride("margin_left", 14);
         margin.AddThemeConstantOverride("margin_right", 14);
+        margin.FocusMode = Control.FocusModeEnum.None;
+        margin.MouseFilter = Control.MouseFilterEnum.Ignore;
         rootPanel.AddChild(margin);
 
         var vbox = new VBoxContainer();
         vbox.AddThemeConstantOverride("separation", 6);
+        vbox.FocusMode = Control.FocusModeEnum.None;
+        vbox.MouseFilter = Control.MouseFilterEnum.Ignore;
         margin.AddChild(vbox);
 
         // Title
@@ -122,6 +128,8 @@ public partial class TestArenaHUD : CanvasLayer
         // Health Bar container
         var hpBox = new HBoxContainer();
         hpBox.AddThemeConstantOverride("separation", 10);
+        hpBox.FocusMode = Control.FocusModeEnum.None;
+        hpBox.MouseFilter = Control.MouseFilterEnum.Ignore;
         vbox.AddChild(hpBox);
 
         var hpTitle = new Label();
@@ -134,6 +142,8 @@ public partial class TestArenaHUD : CanvasLayer
         _healthBar.MaxValue = 100;
         _healthBar.Value = 100;
         _healthBar.ShowPercentage = false;
+        _healthBar.FocusMode = Control.FocusModeEnum.None;
+        _healthBar.MouseFilter = Control.MouseFilterEnum.Ignore;
         hpBox.AddChild(_healthBar);
 
         _healthLabel = new Label();
@@ -143,6 +153,8 @@ public partial class TestArenaHUD : CanvasLayer
         // Combat Info (Weapon & Ammo)
         var combatBox = new HBoxContainer();
         combatBox.AddThemeConstantOverride("separation", 12);
+        combatBox.FocusMode = Control.FocusModeEnum.None;
+        combatBox.MouseFilter = Control.MouseFilterEnum.Ignore;
         vbox.AddChild(combatBox);
 
         _weaponLabel = new Label();

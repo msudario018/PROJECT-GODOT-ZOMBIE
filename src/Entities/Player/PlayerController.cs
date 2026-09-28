@@ -155,15 +155,48 @@ public partial class PlayerController : CharacterBody3D
     /// <summary>
     /// Read WASD/arrow keys and convert the 2D input into an isometric-aligned
     /// 3D movement direction using the camera pivot's Y rotation.
+    /// Supports InputMap actions ("move_forward"/"move_backward", "move_up"/"move_down")
+    /// with direct physical key checking fallback.
     /// </summary>
     private void ReadMovementInput()
     {
+        // 1. Primary action map
         var inputDir = Input.GetVector(
             "move_left", "move_right",
             "move_forward", "move_backward"
         );
 
-        _isSprinting = Input.IsActionPressed("sprint");
+        // 2. Action alias fallback
+        if (inputDir.LengthSquared() < 0.001f)
+        {
+            inputDir = Input.GetVector(
+                "move_left", "move_right",
+                "move_up", "move_down"
+            );
+        }
+
+        // 3. Raw key checking fallback (guarantees WASD and Arrow key responsiveness)
+        if (inputDir.LengthSquared() < 0.001f)
+        {
+            float x = 0f;
+            float y = 0f;
+
+            if (Input.IsKeyPressed(Key.A) || Input.IsKeyPressed(Key.Left) || Input.IsPhysicalKeyPressed(Key.A))
+                x -= 1f;
+            if (Input.IsKeyPressed(Key.D) || Input.IsKeyPressed(Key.Right) || Input.IsPhysicalKeyPressed(Key.D))
+                x += 1f;
+            if (Input.IsKeyPressed(Key.W) || Input.IsKeyPressed(Key.Up) || Input.IsPhysicalKeyPressed(Key.W))
+                y -= 1f;
+            if (Input.IsKeyPressed(Key.S) || Input.IsKeyPressed(Key.Down) || Input.IsPhysicalKeyPressed(Key.S))
+                y += 1f;
+
+            if (x != 0f || y != 0f)
+            {
+                inputDir = new Vector2(x, y).Normalized();
+            }
+        }
+
+        _isSprinting = Input.IsActionPressed("sprint") || Input.IsKeyPressed(Key.Shift) || Input.IsPhysicalKeyPressed(Key.Shift);
 
         _moveDirection = MathUtils.InputToIsometricDirection(
             inputDir,
@@ -171,15 +204,19 @@ public partial class PlayerController : CharacterBody3D
         );
     }
 
-    /// <summary>Apply downward acceleration when airborne.</summary>
+    /// <summary>Apply downward acceleration when airborne with ground adhesion.</summary>
     private void ApplyGravity(float dt)
     {
+        var v = Velocity;
         if (!IsOnFloor())
         {
-            var v = Velocity;
             v.Y -= Gravity * dt;
-            Velocity = v;
         }
+        else if (v.Y < 0f)
+        {
+            v.Y = -0.1f;
+        }
+        Velocity = v;
     }
 
     /// <summary>

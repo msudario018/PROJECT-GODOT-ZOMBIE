@@ -79,11 +79,13 @@ public partial class GameManager : Node
     /// </summary>
     private void SetupInputActions()
     {
-        // ── Movement ──
+        // ── Movement (Primary & Aliases) ──
         RegisterAction("move_forward",  Key.W, Key.Up);
         RegisterAction("move_backward", Key.S, Key.Down);
         RegisterAction("move_left",     Key.A, Key.Left);
         RegisterAction("move_right",    Key.D, Key.Right);
+        RegisterAction("move_up",       Key.W, Key.Up);
+        RegisterAction("move_down",     Key.S, Key.Down);
         RegisterAction("sprint",        Key.Shift);
 
         // ── Combat ──
@@ -100,22 +102,34 @@ public partial class GameManager : Node
         RegisterAction("inventory", Key.Tab);
         RegisterAction("map",       Key.M);
 
-        // ── Mouse (for future ranged combat) ──
+        // ── Mouse Attack & Action ──
+        RegisterMouseAction("attack",                MouseButton.Left);
         RegisterMouseAction("attack_mouse_primary",   MouseButton.Left);
         RegisterMouseAction("attack_mouse_secondary", MouseButton.Right);
+
+        // Also add Space to "attack" action
+        var spaceEv = new InputEventKey { Keycode = Key.Space, PhysicalKeycode = Key.Space };
+        InputMap.ActionAddEvent("attack", spaceEv);
     }
 
     /// <summary>Register a keyboard input action with one or more key bindings.</summary>
     private static void RegisterAction(string actionName, params Key[] keys)
     {
-        if (InputMap.HasAction(actionName))
-            return;
+        if (!InputMap.HasAction(actionName))
+        {
+            InputMap.AddAction(actionName);
+        }
+        else
+        {
+            // Erase any corrupted or improperly serialized events
+            InputMap.ActionEraseEvents(actionName);
+        }
 
-        InputMap.AddAction(actionName);
         foreach (var key in keys)
         {
             var ev = new InputEventKey
             {
+                Keycode = key,
                 PhysicalKeycode = key
             };
             InputMap.ActionAddEvent(actionName, ev);
@@ -125,10 +139,15 @@ public partial class GameManager : Node
     /// <summary>Register a mouse button input action.</summary>
     private static void RegisterMouseAction(string actionName, MouseButton button)
     {
-        if (InputMap.HasAction(actionName))
-            return;
+        if (!InputMap.HasAction(actionName))
+        {
+            InputMap.AddAction(actionName);
+        }
+        else
+        {
+            InputMap.ActionEraseEvents(actionName);
+        }
 
-        InputMap.AddAction(actionName);
         var ev = new InputEventMouseButton
         {
             ButtonIndex = button
