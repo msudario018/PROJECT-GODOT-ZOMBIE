@@ -3,7 +3,7 @@
 [![Engine](https://img.shields.io/badge/Godot-4.7_Forward%2B-blue.svg)](https://godotengine.org/)
 [![Framework](https://img.shields.io/badge/.NET-8.0_C%23-purple.svg)](https://dotnet.microsoft.com/)
 [![Physics](https://img.shields.io/badge/Physics-Jolt_3D-green.svg)](https://github.com/godot-jolt/godot-jolt)
-[![Status](https://img.shields.io/badge/Status-Phase_4_Complete-success.svg)](#current-progress--phase-status)
+[![Status](https://img.shields.io/badge/Status-Phase_7_Complete-success.svg)](#current-progress--phase-status)
 
 A hardcore, mechanically rich post-apocalyptic zombie survival sandbox built in **Godot 4.7 (.NET / C#)** with true 2.5D isometric perspective, Jolt Physics, and Forward+ D3D12 rendering.
 
@@ -24,7 +24,19 @@ Every system—from structural physics and horde flow-fields to acoustic propaga
 | **`LMB`** | Attack / Fire | Performs melee swing or fires ranged weapon toward mouse cursor. |
 | **`R`** | Reload / Rotate | Reloads equipped firearm (or rotates structure preview if building mode active). |
 | **`F`** | Flashlight | Toggles $52^\circ$ wide, $25\text{ m}$ piercing beam & SpotLight3D with ground puddle (consumes battery). |
-| **`E`** | Interact | Opens or closes nearby doors, dynamically updating navigation obstacles and vision occlusion. |
+| **`E`** | Interact | Opens or closes doors, searches loot containers, scavenges/buries/burns corpses, and refuels the generator from a carried fuel canister. |
+| **`7`** | Eat Canned Food | Consumes 1× Canned Food for $+35$ Hunger. |
+| **`8`** | Drink Water | Consumes 1× Water Bottle for $+40$ Thirst. |
+| **`9`** | Apply Bandage | Consumes 1× Bandage for $+20\text{ HP}$. |
+| **`C`** | Craft Bandage | $2\times$ Cloth Strip → $2\times$ Bandage. |
+| **`V`** | Craft First Aid Kit | $3\times$ Cloth + $1\times$ Rope → $1\times$ First Aid Kit. |
+| **`B`** | Craft Ammo Box | $4\times$ Scrap Metal → $2\times$ 9mm ammo packs (each pack is a full magazine when reloading). |
+| **`X`** | Sever / Repair Cable | Debug: cuts or reconnects the nearest power cable, instantly splitting or merging grid islands. |
+| **`G`** | Generator On/Off | Debug: starts or stops the combustion generator to test battery buffering and load shedding. |
+| **`H`** | Spawn Raid | Debug: deploys a 3-raider bandit squad near the player (Advance/Suppress/Flank roles). |
+| **`J`** | Trigger Airdrop | Debug: drops a military supply cache contested by a 2-raider squad. |
+| **`K`** | Cycle Survivor Task | Debug: rotates a camp survivor between Idle/Defend/Scavenge/Repair/Refuel/Heal. |
+| **`L`** | Spawn Survivor | Debug: recruits another survivor (CombatMedic / CombatVeteran / ScavengerScout). |
 | **`1`** | Build Scrap Fence | Selects Tier 1 Scrap Wood Fence ($250\text{ HP}$, opaque, flammable). |
 | **`2`** | Build Chain Link Wall | Selects Tier 2 Chain Link Wall ($500\text{ HP}$, see-through steel wire mesh). |
 | **`3`** | Build Reinforced Door | Selects interactive wooden doorway with swinging leaf and locking support. |
@@ -84,6 +96,37 @@ Every system—from structural physics and horde flow-fields to acoustic propaga
   - Rotates both the 3D dynamic `SpotLight3D` and the narrow line-of-sight FoW cone toward the mouse aim vector.
 - **Comprehensive Debug HUD (`TestArenaHUD.cs`):** Real-time monitoring of HP, equipped weapon, current magazine / reserve ammunition, reload completion progress, flashlight battery percentage, active zombie counts, and acoustic event log.
 
+### ✅ Phase 5: Survival & Economy — COMPLETED
+- **Slot-Based Inventory (`InventoryComponent.cs`, `ItemData.cs`):** 24 slots with per-item stack limits, live weight tracking in kg, and an encumbrance penalty ($-25\%$ move speed) once the weight limit is exceeded.
+- **Item Registry & Consumables (`ItemData.cs`):** bandages ($+20\text{ HP}$), first aid kits ($+60\text{ HP}$), canned food ($+35\text{ Hunger}$), water ($+40\text{ Thirst}$), crafting materials (cloth, scrap, planks, nails, rope), ammo packs, shovel and fuel canisters.
+- **Survival Needs (`PlayerStats.cs`):** hunger, thirst and stamina simulation with starvation/dehydration HP drain and sprint lockout when stamina hits $0$.
+- **Crafting (`CraftingSystem.cs`):** five starter recipes — bandage, rope, improvised first aid kit, 9mm ammo box and molotov cocktail — with ingredient validation and consumption.
+- **Searchable Loot Containers (`LootContainer.cs`):** medical cabinet, ammo cache, food locker, toolbox and general junk archetypes with weighted loot tables and a timed $1.5\text{ s}$ search.
+- **Corpse Lifecycle & Miasma (`Corpse.cs`, `CorpseManager.cs`):** Fresh → Bloated → Rotting Miasma → Skeleton decay with a $3.5\text{ HP/s}$ toxic aura, plus scavenge, bury (needs shovel) and burn (needs fuel) disposal.
+- **Day/Night Cycle (`DayNightCycle.cs`):** 24-hour cycle driving sun angle/energy, ambient light, and night-frenzy multipliers ($\times 1.35$ zombie speed, sight range and hearing).
+
+### ✅ Phase 6: Power Grid & Islanding — COMPLETED
+- **BFS Islanding (`PowerGrid.cs`, `PowerIsland.cs`):** the grid flood-fills connected nodes into islands whenever the topology changes — a severed cable instantly creates independent sub-grids that each balance their own generation, storage and load.
+- **Combustion Generator (`CombustionGenerator.cs`):** $1200\text{ W}$ DC source that burns fuel canisters over time and emits a $55\text{ m}$ mechanical hum dragging the horde toward the base.
+- **Battery Bank & Inverter (`BatteryBank.cs`, `Inverter.cs`):** $1200\text{ Wh}$ buffer with depth-of-discharge degradation, behind a DC→AC inverter gate ($92\%$ efficiency) that AC-only appliances depend on.
+- **Wiring Cables (`WiringSegment.cs`):** long-distance connections that can be severed or repaired, firing an immediate BFS island rebuild.
+- **Powered Loads:** searchlight ($150\text{ W}$, auto-on at dusk), electric fence ($320\text{ W}$ shock field that kills zombies but crackles loudly) and freezer ($200\text{ W}$, halts corpse decay so miasma never forms near the base).
+- **Priority Load Shedding:** Critical → Defensive → Utility tiers with battery buffering, deficit detection and `OnGridOverload` / `OnGridIslanded` / `OnIslandReconnected` broadcasts.
+
+### ✅ Phase 7: NPCs & Hostile Bandits — COMPLETED
+- **Survivor AI (`SurvivorBase.cs`, `SurvivorAI.cs`):** priority task loop — **Defend** (melee threats near the camp anchor) → **Heal** (injured ally or player) → **Scavenge** (unsearched containers) — plus **Repair** (damaged walls), **RefuelPower** (generator fuel runs) and **Idle** wander. NavigationAgent3D pathing with direct-steering fallback.
+- **Survivor Archetypes (`SurvivorArchetypes.cs`):** CombatMedic (×1.5 heal, 90 HP), CombatVeteran (140 HP, +2 armor, 22 melee) and ScavengerScout (4.4 m/s, 0.6× search time, 80 HP).
+- **Camp Morale (`MoraleSystem.cs`):** 0–100 morale driven by starvation, miasma zones, power status, survivor losses, bandit kills and burials; broadcasts `OnCampMoraleChanged` and modulates survivor task speed (×0.8 below 30, ×1.1 above 75).
+- **Bandit Squads (`BanditBase.cs`, `BanditSquad.cs`):** tiered raiders (Scavenger retreats at 50% HP, Militia at 30%, Warlord never retreats) with squad roles — leader **Advances**, others **Suppress** (hold ground, ranged) or **Flank** (6 m side-step) — squad morale collapse triggers mass retreat, and losing the leader drops morale by 45%.
+- **Bandit Spawner (`BanditSpawner.cs`):** timed or debug-triggered raids spawning on a ring around the player; `OnBanditRaidIncoming` / `OnBanditSquadEliminated` broadcasts.
+- **Airdrop Contests (`AirdropEvent.cs`):** fixed-manifest military cache (medkits, ammo, food, cloth) reserved from survivor scavengers but lootable by the player and contested by a spawned raider squad.
+- **NPC Corpses:** dead survivors and bandits now feed the Phase 5 corpse-rot/miasma pipeline through `CorpseManager`.
+- **HUD:** camp morale bar, survivor/bandit counters, airdrop banner, plus `[H]`/`[J]`/`[K]`/`[L]` debug controls.
+
+
+---
+
+
 ---
 
 ## 🗺️ Architectural Roadmap
@@ -94,9 +137,9 @@ Every system—from structural physics and horde flow-fields to acoustic propaga
 | **Phase 2** | Zombies & Navigation | ✅ Completed | FlowFieldNavigator, SensorySystem, Acoustic propagation, Shambler archetype, Melee combat |
 | **Phase 3** | Building & NavObstacles | ✅ Completed | Grid building, Scrap & Chain Link walls, Interactive doors, Dynamic NavObstacles, Barricade degradation |
 | **Phase 4** | Combat & Visibility Depth | ✅ Completed | Multi-weapon inventory, ballistics, tracers, Sprinter/Bloater archetypes, flashlight battery simulation |
-| **Phase 5** | Survival & Economy | 🔲 Planned | Inventory grid, container searching, hunger/thirst/stamina, corpse rot lifecycle & miasma aura |
-| **Phase 6** | Power Grid & Islanding | 🔲 Planned | Generators, battery banks, inverters, BFS sub-grid isolation, powered defenses (fences, turrets, lights) |
-| **Phase 7** | NPCs & Hostile Bandits | 🔲 Planned | Survivor AI, camp morale, hostile human raiders (BanditBase) with cover-seeking and flanking AI |
+| **Phase 5** | Survival & Economy | ✅ Completed | Inventory grid, container searching, hunger/thirst/stamina, crafting, corpse rot lifecycle & miasma aura, day/night cycle |
+| **Phase 6** | Power Grid & Islanding | ✅ Completed | Combustion generator, battery bank, inverter, BFS sub-grid isolation, powered loads (floodlight, electric fence, freezer) |
+| **Phase 7** | NPCs & Hostile Bandits | ✅ Completed | Survivor AI (3 archetypes), camp morale, task priority assignment, BanditBase squads (cover/flank/suppress), airdrop contest zones |
 | **Phase 8** | Full Content Complete | 🔲 Planned | All 9 zombie archetypes, all 7 survivor roles, Tier 3 warlord bandits, 30 building variations |
 | **Phase 9** | Polish & Optimization | 🔲 Planned | World events, weather/seasons, save/load serialization, flow-field thread pooling, release candidate |
 
@@ -118,7 +161,8 @@ res://
 │   │       ├── Shambler.tscn               # Shambler walker archetype
 │   │       ├── Sprinter.tscn               # Fast runner archetype
 │   │       └── Bloater.tscn                # Exploding boomer archetype
-│   ├── levels/TestArena.tscn               # Testing sandbox with lighting, barricades & HUD
+│   ├── levels/TestArena.tscn               # Testing sandbox with lighting, barricades, power grid & HUD
+│   ├── levels/SystemsSelfTest.tscn         # Headless regression harness (Phase 5 + 6 assertions)
 │   └── world/defenses/walls/
 │       ├── ScrapWoodFence.tscn             # Tier 1 wall segment
 │       ├── ChainLinkWall.tscn              # Tier 2 see-through wall segment
@@ -126,27 +170,42 @@ res://
 └── src/
     ├── Core/
     │   ├── Autoloads/ (EventBus, GameManager)
-    │   ├── Components/ (HealthComponent, AudioEmitterComponent)
-    │   ├── Data/ (Enums)
+    │   ├── Components/ (HealthComponent, AudioEmitterComponent, InventoryComponent)
+    │   ├── Data/ (Enums, ItemData)
+    │   ├── Diagnostics/ (SystemsSelfTest)
     │   ├── Spatial/ (SpatialGrid, FlowFieldNavigator)
     │   ├── StateMachine/ (StateMachine, State)
     │   ├── Utilities/ (MathUtils)
     │   └── Vision/ (FieldOfView, FogOfWarSystem, FogOfWarRenderer, VisionOccluder)
     ├── Entities/
-    │   ├── Player/ (PlayerController, PlayerCombat, PlayerInteraction)
-    │   └── Zombies/
-    │       ├── ZombieBase.cs
-    │       ├── Archetypes/ (ShamblerWalker.cs, SprinterRunner.cs, BloaterBoomer.cs)
-    │       └── ZombieAI/ (SensorySystem, States: Idle, Alert, Chase, Attack, Hurt, Dead)
+    │   ├── Player/ (PlayerController, PlayerCombat, PlayerInteraction, PlayerStats)
+    │   ├── Zombies/
+    │   │   ├── ZombieBase.cs
+    │   │   ├── Archetypes/ (ShamblerWalker.cs, SprinterRunner.cs, BloaterBoomer.cs)
+    │   │   └── ZombieAI/ (SensorySystem, States: Idle, Alert, Chase, Attack, Hurt, Dead)
+    │   ├── Survivors/ (SurvivorBase, SurvivorAI, MoraleSystem, SurvivorArchetypes)
+    │   ├── Bandits/ (BanditBase, BanditSquad, BanditSpawner)
+    │   └── NPC/ (NpcEnums: SurvivorTask, BanditTier, SquadRole, BanditCombatState)
     ├── Systems/
     │   ├── Building/ (BuildingSystem, BuildingGhost)
-    │   └── Combat/ (WeaponData, ProjectileManager)
+    │   ├── Combat/ (WeaponData, ProjectileManager)
+    │   ├── Crafting/ (CraftingSystem, CraftingRecipe)
+    │   └── Loot/ (LootContainer, LootEntry, container archetype loot tables)
     ├── UI/
     │   └── HUD/ (TestArenaHUD)
     └── World/
         ├── Buildings/StructuralIntegrity/ (BarricadeDegradation)
         ├── Defenses/ (WallBase, DoorBase, WallTiers: ScrapWoodFence, ChainLinkWall)
-        └── Environment/ (AcousticPropagation)
+        ├── Environment/ (AcousticPropagation, Corpse, CorpseManager, DayNightCycle)
+        ├── Power/
+        │   ├── PowerGrid.cs (BFS islanding manager)
+        │   ├── PowerGridNode.cs (base grid node)
+        │   ├── PowerIsland.cs (per-island generation / storage / load simulation)
+        │   ├── Generation/ (CombustionGenerator)
+        │   ├── Storage/ (BatteryBank, Inverter)
+        │   ├── Distribution/ (WiringSegment)
+        │   └── Loads/ (PoweredDevice, SearchLight, ElectricFence, Freezer)
+        └── WorldEvents/ (AirdropEvent)
 ```
 
 ---
@@ -168,6 +227,11 @@ res://
    dotnet build
    ```
 3. Open the project in Godot 4.7 and hit **F5** (or run `scenes/levels/TestArena.tscn`).
+4. *(Optional)* Run the headless systems self-test — 82 assertions covering inventory, consumables, crafting, loot, corpse rot, BFS islanding, battery buffering, load shedding, morale, survivor tasks, bandit squads and airdrop contests:
+   ```bash
+   godot --headless --path . res://scenes/levels/SystemsSelfTest.tscn
+   ```
+   The process exit code equals the number of failed assertions, so `0` means everything is green.
 
 ---
 

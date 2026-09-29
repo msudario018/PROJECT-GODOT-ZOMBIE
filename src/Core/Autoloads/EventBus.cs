@@ -55,6 +55,9 @@ public partial class EventBus : Node
     /// <summary>Fired when camp morale value changes (0-100 scale).</summary>
     public event Action<float>? OnCampMoraleChanged;
 
+    /// <summary>Fired when a survivor takes a task: (survivorName, taskId).</summary>
+    public event Action<string, int>? OnSurvivorTaskAssigned;
+
     // ── Structural Events ──────────────────────────────────────────────────
     /// <summary>Fired when a structural element collapses (load-bearing failure).</summary>
     public event Action<Node>? OnStructuralFailure;
@@ -146,6 +149,9 @@ public partial class EventBus : Node
 
     public void EmitCampMoraleChanged(float morale)
         => OnCampMoraleChanged?.Invoke(morale);
+
+    public void EmitSurvivorTaskAssigned(string survivorName, int taskId)
+        => OnSurvivorTaskAssigned?.Invoke(survivorName, taskId);
 
     public void EmitStructuralFailure(Node element)
         => OnStructuralFailure?.Invoke(element);

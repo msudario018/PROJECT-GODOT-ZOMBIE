@@ -80,7 +80,7 @@ public partial class ZombieIdleState : ZombieBaseState
             else
             {
                 Vector3 dir = diff.Normalized();
-                Zombie.Velocity = new Vector3(dir.X * Zombie.MoveSpeed * 0.4f, Zombie.Velocity.Y, dir.Z * Zombie.MoveSpeed * 0.4f);
+                Zombie.Velocity = new Vector3(dir.X * Zombie.EffectiveMoveSpeed * 0.4f, Zombie.Velocity.Y, dir.Z * Zombie.EffectiveMoveSpeed * 0.4f);
                 Zombie.FaceDirection(dir, dt);
             }
         }

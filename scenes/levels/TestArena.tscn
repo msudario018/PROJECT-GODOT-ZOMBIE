@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3]
+[gd_scene load_steps=33 format=3]
 
 [ext_resource type="PackedScene" path="res://scenes/entities/player/Player.tscn" id="1_player"]
 [ext_resource type="Script" path="res://src/Core/Vision/FogOfWarSystem.cs" id="2_fogsystem"]
@@ -14,6 +14,17 @@
 [ext_resource type="Script" path="res://src/Systems/Combat/ProjectileManager.cs" id="12_projectiles"]
 [ext_resource type="PackedScene" path="res://scenes/entities/zombies/archetypes/Sprinter.tscn" id="13_sprinter"]
 [ext_resource type="PackedScene" path="res://scenes/entities/zombies/archetypes/Bloater.tscn" id="14_bloater"]
+[ext_resource type="Script" path="res://src/World/Environment/CorpseManager.cs" id="15_corpse"]
+[ext_resource type="Script" path="res://src/World/Environment/DayNightCycle.cs" id="16_daynight"]
+[ext_resource type="Script" path="res://src/Systems/Loot/LootContainer.cs" id="17_loot"]
+[ext_resource type="Script" path="res://src/World/Power/PowerGrid.cs" id="18_powergrid"]
+[ext_resource type="Script" path="res://src/World/Power/Generation/CombustionGenerator.cs" id="19_generator"]
+[ext_resource type="Script" path="res://src/World/Power/Storage/BatteryBank.cs" id="20_battery"]
+[ext_resource type="Script" path="res://src/World/Power/Storage/Inverter.cs" id="21_inverter"]
+[ext_resource type="Script" path="res://src/World/Power/Distribution/WiringSegment.cs" id="22_cable"]
+[ext_resource type="Script" path="res://src/World/Power/Loads/SearchLight.cs" id="23_searchlight"]
+[ext_resource type="Script" path="res://src/World/Power/Loads/ElectricFence.cs" id="24_efence"]
+[ext_resource type="Script" path="res://src/World/Power/Loads/Freezer.cs" id="25_freezer"]
 
 [sub_resource type="Environment" id="Environment_arena"]
 background_mode = 1
@@ -201,4 +212,86 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14, 0, -14)
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("8_hud")
+
+[node name="CorpseManager" type="Node3D" parent="."]
+script = ExtResource("15_corpse")
+
+[node name="DayNightCycle" type="Node3D" parent="."]
+script = ExtResource("16_daynight")
+
+[node name="LootCrateMed" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 1)
+script = ExtResource("17_loot")
+ContainerType = 0
+ContainerLabel = "Medical Cabinet"
+
+[node name="LootCrateAmmo" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0, 1)
+script = ExtResource("17_loot")
+ContainerType = 1
+ContainerLabel = "Ammo Cache"
+
+[node name="LootCrateTools" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0, 4)
+script = ExtResource("17_loot")
+ContainerType = 3
+ContainerLabel = "Workshop Tool Box"
+
+[node name="PowerGrid" type="Node" parent="."]
+script = ExtResource("18_powergrid")
+TickInterval = 0.5
+ProximityConnectRadius = 4.0
+AutoConnectByProximity = true
+
+[node name="Generator" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, -6)
+script = ExtResource("19_generator")
+NodeLabel = "Base Generator"
+SupplyWatts = 1200.0
+FuelCanisters = 2.0
+MaxCanisters = 4.0
+NoiseRadius = 55.0
+
+[node name="BatteryBank" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13.2, 0, -6)
+script = ExtResource("20_battery")
+NodeLabel = "Battery Bank"
+CapacityWattHours = 1200.0
+InitialChargePercent = 1.0
+MaxChargeRateWatts = 600.0
+MaxDischargeRateWatts = 900.0
+
+[node name="Inverter" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14.4, 0, -6)
+script = ExtResource("21_inverter")
+NodeLabel = "Main Inverter"
+
+[node name="SearchLight" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15.6, 0, -6)
+script = ExtResource("23_searchlight")
+NodeLabel = "Yard Floodlight"
+RequiredWatts = 150.0
+OmniRange = 18.0
+LightEnergy = 4.0
+
+[node name="Freezer" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12, 0, -8)
+script = ExtResource("25_freezer")
+NodeLabel = "Base Freezer"
+RequiredWatts = 200.0
+CoolingRadius = 5.0
+
+[node name="ElectricFence" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21, 0, -6)
+script = ExtResource("24_efence")
+NodeLabel = "Perimeter Fence Energizer"
+RequiredWatts = 320.0
+ShockRadius = 3.0
+
+[node name="PowerCable1" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -17.7, 0, -6)
+script = ExtResource("22_cable")
+NodeAPath = NodePath("../Inverter")
+NodeBPath = NodePath("../ElectricFence")
+MaxThroughputWatts = 5000.0
 

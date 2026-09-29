@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://src/Entities/Player/PlayerController.cs" id="1_controller"]
 [ext_resource type="Script" path="res://src/Core/Components/HealthComponent.cs" id="2_health"]
@@ -6,6 +6,9 @@
 [ext_resource type="Script" path="res://src/Core/Components/AudioEmitterComponent.cs" id="4_audio"]
 [ext_resource type="Script" path="res://src/Entities/Player/PlayerCombat.cs" id="5_combat"]
 [ext_resource type="Script" path="res://src/Entities/Player/PlayerInteraction.cs" id="6_interact"]
+[ext_resource type="Script" path="res://src/Core/Components/InventoryComponent.cs" id="7_inv"]
+[ext_resource type="Script" path="res://src/Entities/Player/PlayerStats.cs" id="8_stats"]
+[ext_resource type="Script" path="res://src/Systems/Crafting/CraftingSystem.cs" id="9_craft"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.4
@@ -56,6 +59,15 @@ script = ExtResource("5_combat")
 [node name="PlayerInteraction" type="Node3D" parent="."]
 script = ExtResource("6_interact")
 
+[node name="InventoryComponent" type="Node" parent="."]
+script = ExtResource("7_inv")
+
+[node name="PlayerStats" type="Node" parent="."]
+script = ExtResource("8_stats")
+
+[node name="CraftingSystem" type="Node" parent="."]
+script = ExtResource("9_craft")
+
 [node name="SpotLight3D" type="SpotLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)
 visible = true
@@ -65,4 +77,3 @@ shadow_enabled = true
 spot_range = 25.0
 spot_angle = 26.0
 spot_attenuation = 1.0
-

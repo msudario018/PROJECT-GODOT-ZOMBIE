@@ -7,7 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.4.1] - 2026-09-28 — Flashlight & Night Visibility Polish
+## [0.7.0] - 2026-09-29 — Phase 7: NPCs & Hostile Bandits
+
+### Added
+- **Survivor AI (`Entities/Survivors/SurvivorBase.cs`, `SurvivorAI.cs`):** composable NPC survivor with Health, Inventory, SensorySystem, NavigationAgent3D and a priority task loop — **Defend** (melee threats within an $18\text{ m}$ camp radius) → **Heal** (ally below 75% HP, including the player) → **Scavenge** (nearest unsearched container) → **Repair** (damaged walls, +40 HP per patch) → **RefuelPower** (carries a fuel can to the generator) → **Idle** wander. Self-builds its child components in `_EnterTree`, so survivors can be instantiated from code or scenes.
+- **Survivor Archetypes (`SurvivorArchetypes.cs`):** CombatMedic (×1.5 heal, 90 HP), CombatVeteran (140 HP, +2 armor, 22 melee damage), ScavengerScout (4.4 m/s, 0.6× search time, 80 HP).
+- **Camp Morale (`Entities/Survivors/MoraleSystem.cs`):** 0–100 camp morale driven by starvation, active miasma zones, grid status and events (survivor death −12, player death −25, burial +1.5, bandit kill +4, zombie kill +0.5). Broadcasts `OnCampMoraleChanged` and modulates survivor task speed (×0.8 below 30 morale, ×1.1 above 75).
+- **Bandit Squads (`Entities/Bandits/BanditBase.cs`, `BanditSquad.cs`):** hostile raiders with tiered presets — Scavenger (retreats below 50% HP, suppressed gunshots), Militia (30% HP), Warlord (never retreats). Squad leader takes the **Advance** role while others **Suppress** (stationary ranged) or **Flank** (perpendicular 6 m side-step), with cohesion rally checks, group morale collapse → mass retreat, and a 45% morale penalty for losing the leader.
+- **Bandit Combat Loop:** melee strikes, ranged shots with tracers/impact sparks/falloff damage, cover-seeking approach offsets, container looting during lulls, and acoustic footprints (gunshots alert zombies).
+- **Bandit Spawner (`BanditSpawner.cs`):** cadence-based or debug-triggered raids deployed on a ring around the player; fires `OnBanditRaidIncoming` / `OnBanditSquadEliminated`.
+- **Airdrop Contests (`World/WorldEvents/AirdropEvent.cs`):** fixed-manifest military cache (2 medkits, 3× 9mm packs, 3× food, 2× cloth) reserved from survivor scavengers, lootable by the player, and contested by a spawned raider squad; emits `OnAirdropSpawned`.
+- **Shared NPC Enumerations (`Entities/NPC/NpcEnums.cs`):** `SurvivorTask`, `SurvivorArchetype`, `BanditTier`, `SquadRole`, `BanditCombatState`.
+- **HUD Phase 7 Panel (`TestArenaHUD_Phase7.cs`):** camp morale bar, survivor/bandit counters, airdrop banner and debug keys `[H]` spawn raid, `[J]` airdrop, `[K]` cycle survivor task, `[L]` recruit survivor.
+- **Self-Test Coverage:** 31 new assertions (82 total) for morale math/broadcasts, survivor task assignment, archetype stat presets, squad role assignment, flank geometry, tier retreat thresholds, squad elimination events, and airdrop manifest delivery.
+
+### Changed
+- **`LootContainer`:** search can be forced into any inventory (`ForceSearch`) for NPC scavengers/looters; airdrop caches carry a **per-instance** fixed loot manifest instead of mutating the shared archetype tables.
+- **`CorpseManager`:** survivors and bandits now spawn corpse nodes on death, feeding the Phase 5 rot/miasma pipeline.
+- **`EventBus`:** new `OnSurvivorTaskAssigned` event.
+- **`TestArenaHUD`:** Phase 7 panel and debug keys wired through `partial` hooks so Phase 1–6 HUD code is untouched.
+
+---
+
+## [0.6.0] - 2026-09-29 — Phase 6: Power Grid & Islanding
+
+### Added
+- **Master Power Grid with BFS Islanding (`PowerGrid.cs`):**
+  - Node graph discovery through the `power_nodes` / `power_wires` groups.
+  - Breadth-first flood-fill groups nodes into electrically connected islands on every topology change; `OnGridIslanded` fires on splits and `OnIslandReconnected` when cables are repaired.
+  - Connectivity comes from explicit `WiringSegment` cables plus an implicit proximity couple (≤ $4\text{ m}$) between adjacent hardware.
+  - Per-tick (0.5 s) rebalancing, overload detection (`OnGridOverload`) and status broadcast (`OnPowerStatusChanged`).
+- **Island Simulation (`PowerIsland.cs`):** each island independently sums generation, buffer discharge and demand, then allocates power by the `PowerPriority` load-shedding tiers (Critical → Defensive → Utility), drains or charges batteries, and reports deficit/shed counts.
+- **Combustion Generator (`Generation/CombustionGenerator.cs`):** $1200\text{ W}$ DC source. Burns fuel canisters over real-time hours, emits a $55\text{ m}$ mechanical hum (attracts hordes), and is refuelled by interacting with a carried fuel canister.
+- **Battery Bank (`Storage/BatteryBank.cs`):** $1200\text{ Wh}$ storage, $600\text{ W}$ charge / $900\text{ W}$ discharge limits, depth-of-discharge tracking and incremental capacity degradation on deep cycles.
+- **Inverter (`Storage/Inverter.cs`):** DC→AC gate at $92\%$ efficiency with a $30\text{ W}$ standby draw; AC-only appliances (`RequiresInverter`) are shed in islands that have no powered inverter.
+- **Wiring Cables (`Distribution/WiringSegment.cs`):** rated cable runs bridging arbitrary distance, with `Sever()` / `Repair()` / `ToggleSevered()` that force an island rebuild; drawn as an aligned cylinder mesh that turns red when cut.
+- **Powered Loads (`Loads/`):**
+  - `SearchLight`: $150\text{ W}$ floodlight that auto-illuminates between dusk and dawn.
+  - `ElectricFence`: $320\text{ W}$ shock field ($22\text{ HP/s}$ electric damage, knockback) whose arc crackle emits a $25\text{ m}$ noise signature.
+  - `Freezer`: $200\text{ W}$ cold storage that freezes corpses in a $5\text{ m}$ radius, halting miasma formation.
+- **Power UI & Debug Controls (`TestArenaHUD.cs`):** live one-line grid summary (island count, generation, load, battery %, shed loads) with colour states, plus `[X]` sever/repair nearest cable and `[G]` generator start/stop.
+- **Headless Regression Harness (`Core/Diagnostics/SystemsSelfTest.cs`, `scenes/levels/SystemsSelfTest.tscn`):** 51 assertions over inventory stacking/weight/encumbrance, consumables, crafting, loot containers, corpse rot events, grid topology, cable islanding, battery drain math ($610\text{ W} \times 60\text{ s} = 10.17\text{ Wh}$) and priority shedding. Exits with the failure count.
+
+### Fixed
+- **Fog-of-War shader parse failure (`assets/shaders/fog_of_war.gdshader`):** replaced the invalid `repeat_clamp_to_edge` sampler hint with valid Godot 4.7 syntax (`filter_linear, repeat_disable`), restoring the FoW overlay.
+- **Zombie AI initialisation crash (`ZombieBase.cs`):** components are now resolved lazily, so the initial state entered by `StateMachine._Ready` (which runs before `ZombieBase._Ready`) no longer throws `NullReferenceException` on `Zombie.Sensory`.
+- **Dead night-frenzy code:** `DayNightCycle.ZombieNightMultiplier` is now applied to zombie move speed (chase/alert/idle) and to sight range and hearing sensitivity.
+- **Unused hearing sensitivity:** `SensorySystem.HearingSensitivity` is now applied per listener inside `AcousticPropagation`, instead of being ignored.
+
+---
+
+## [0.5.0] - 2026-09-29 — Phase 5: Survival & Economy
+
+### Added
+- **Slot-Based Inventory (`Core/Components/InventoryComponent.cs`):** 24 slots with per-item stack limits, real-time weight tracking, encumbrance detection ($-25\%$ move speed) and item consumption applying medical/food/water/stamina effects.
+- **Item Registry (`Core/Data/ItemData.cs`):** flyweight `Resource` definitions for bandages, first aid kits, canned food, water, scrap, cloth, planks, nails, rope, 9mm/12G ammo packs, shovel, fuel canister and molotov cocktail.
+- **Survival Needs (`Entities/Player/PlayerStats.cs`):** hunger, thirst and stamina drain/recovery, starvation and dehydration damage, stamina-depleted sprint lockout, and `Eat`/`Drink`/`RestoreStamina` API.
+- **Crafting System (`Systems/Crafting/CraftingSystem.cs`):** five starter recipes (bandage, rope, improvised first aid kit, 9mm ammo box, molotov cocktail) with availability checks and ingredient consumption.
+- **Searchable Loot Containers (`Systems/Loot/LootContainer.cs`):** five container archetypes with weighted loot tables, timed searches, searched-state visuals and interaction prompts.
+- **Corpse Lifecycle (`World/Environment/Corpse.cs`, `CorpseManager.cs`):** Fresh → Bloated → Rotting Miasma → Skeleton decay with a toxic miasma aura, corpse scavenging, burial and incineration, capped corpse pooling, and `OnCorpseRotAdvanced` / `OnCorpseBuried` broadcasts.
+- **Day/Night Cycle (`World/Environment/DayNightCycle.cs`):** time progression with Dawn/Day/Dusk/Night phases driving sun rotation, light energy/colour, ambient intensity and zombie night-frenzy multipliers.
+- **Interaction & Hotkeys (`PlayerInteraction.cs`, `TestArenaHUD.cs`):** loot container searching, corpse scavenge/bury/burn, generator refuelling, plus `[7]`/`[8]`/`[9]` consumable hotkeys and `[C]`/`[V]`/`[B]` crafting shortcuts.
+
+### Changed
+- **Reload now consumes inventory ammo packs (`PlayerCombat.cs`):** when the loose reserve runs dry, ammo packs (`ammo_9mm`, `ammo_12g`) are converted into a full magazine from the inventory, making crafted and looted ammunition meaningful.
+- **HUD (`TestArenaHUD.cs`):** added HP/food/water/stamina bars, inventory weight summary, day/night clock and miasma zone counter.
+
+---
+
+
 
 ### Added
 - **Synchronized Fog-of-War Flashlight Clearing (`FieldOfView.cs`, `FogOfWarSystem.cs`):**

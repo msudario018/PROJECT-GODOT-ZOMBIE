@@ -5,7 +5,7 @@ render_mode blend_mix, depth_draw_never, cull_disabled, unshaded, shadows_disabl
 // R=0.0: fully visible (no fog)
 // R=0.65: explored (dimmed)
 // R=1.0: hidden (opaque black)
-uniform sampler2D fog_texture : filter_linear, repeat_clamp_to_edge;
+uniform sampler2D fog_texture : filter_linear, repeat_disable;
 
 // World-space bounds of the fog grid (XZ plane)
 uniform vec2 grid_origin = vec2(-25.0, -25.0);

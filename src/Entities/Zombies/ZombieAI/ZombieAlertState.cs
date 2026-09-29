@@ -60,7 +60,7 @@ public partial class ZombieAlertState : ZombieBaseState
             else
             {
                 Vector3 dir = diff.Normalized();
-                float speed = Zombie.MoveSpeed * InvestigateSpeedMultiplier;
+                float speed = Zombie.EffectiveMoveSpeed * InvestigateSpeedMultiplier;
                 Zombie.Velocity = new Vector3(dir.X * speed, Zombie.Velocity.Y, dir.Z * speed);
                 Zombie.FaceDirection(dir, dt);
             }

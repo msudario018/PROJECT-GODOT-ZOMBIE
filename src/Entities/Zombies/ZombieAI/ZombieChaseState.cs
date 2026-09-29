@@ -86,7 +86,7 @@ public partial class ZombieChaseState : ZombieBaseState
         }
 
         // Apply horizontal velocity and facing
-        Zombie.Velocity = new Vector3(moveDir.X * Zombie.MoveSpeed, Zombie.Velocity.Y, moveDir.Z * Zombie.MoveSpeed);
+        Zombie.Velocity = new Vector3(moveDir.X * Zombie.EffectiveMoveSpeed, Zombie.Velocity.Y, moveDir.Z * Zombie.EffectiveMoveSpeed);
         Zombie.FaceDirection(moveDir, dt);
     }
 }

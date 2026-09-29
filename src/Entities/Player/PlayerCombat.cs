@@ -31,6 +31,7 @@ public partial class PlayerCombat : Node3D
     private bool _isReloading = false;
     private PlayerController _player = null!;
     private AudioEmitterComponent? _audioEmitter;
+    private ZombieApocalypse.Core.Components.InventoryComponent? _inventory;
     private Node3D? _swingVisual;
 
     public WeaponData CurrentWeapon => _weapons[_currentWeaponIndex];
@@ -44,6 +45,7 @@ public partial class PlayerCombat : Node3D
     {
         _player = GetOwner<PlayerController>() ?? (GetParent() as PlayerController)!;
         _audioEmitter = _player.GetNodeOrNull<AudioEmitterComponent>("AudioEmitterComponent");
+        _inventory = _player.GetNodeOrNull<ZombieApocalypse.Core.Components.InventoryComponent>("InventoryComponent");
 
         InitializeWeapons();
         CreateSwingVisual();
@@ -188,11 +190,51 @@ public partial class PlayerCombat : Node3D
     private void StartReload()
     {
         int needed = CurrentWeapon.MagazineCapacity - CurrentMag;
-        if (needed <= 0 || CurrentReserve <= 0) return;
+        if (needed <= 0) return;
+
+        // Draw ammo packs (craft/loot items) from the inventory into the reserve pool
+        EnsureReserveFromInventory(needed);
+        if (CurrentReserve <= 0) return;
 
         _isReloading = true;
         _reloadTimer = CurrentWeapon.ReloadTime;
         GD.Print($"[PlayerCombat] Reloading {CurrentWeapon.WeaponName}...");
+    }
+
+    /// <summary>
+    /// Inventory item id holding reserve ammunition for the current weapon.
+    /// Each pack converts into one full magazine of loose rounds.
+    /// </summary>
+    private string? GetAmmoItemId() => CurrentWeapon.WeaponId switch
+    {
+        "pistol_9mm" => "ammo_9mm",
+        "shotgun_12g" => "ammo_12g",
+        _ => null
+    };
+
+    /// <summary>True if the inventory still holds at least one ammo pack for the current weapon.</summary>
+    private bool HasAmmoPack()
+    {
+        string? ammoId = GetAmmoItemId();
+        return _inventory != null && ammoId != null && _inventory.Has(ammoId);
+    }
+
+    /// <summary>
+    /// Converts inventory ammo packs into reserve rounds until `wantedRounds`
+    /// are available (or the packs run out). One pack = one full magazine.
+    /// </summary>
+    private void EnsureReserveFromInventory(int wantedRounds)
+    {
+        string? ammoId = GetAmmoItemId();
+        if (_inventory == null || ammoId == null) return;
+
+        while (CurrentReserve < wantedRounds && _inventory.Has(ammoId))
+        {
+            _inventory.TryRemove(ammoId, 1);
+            _reserveAmmos[_currentWeaponIndex] += CurrentWeapon.MagazineCapacity;
+            EmitSignal(SignalName.AmmoChanged, CurrentMag, CurrentReserve);
+            GD.Print($"[PlayerCombat] Loaded ammo pack → reserve {_reserveAmmos[_currentWeaponIndex]}");
+        }
     }
 
     private void FinishReload()
@@ -271,8 +313,8 @@ public partial class PlayerCombat : Node3D
             ProjectileManager.Instance?.SpawnTracer(muzzlePos, hitPos);
         }
 
-        // Auto reload when magazine empty
-        if (CurrentMag <= 0 && CurrentReserve > 0)
+        // Auto reload when magazine empty (reserve pool OR inventory ammo packs)
+        if (CurrentMag <= 0 && (CurrentReserve > 0 || HasAmmoPack()))
         {
             StartReload();
         }

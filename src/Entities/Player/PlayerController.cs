@@ -40,6 +40,8 @@ public partial class PlayerController : CharacterBody3D
     private Camera3D _camera = null!;
     private Node3D _mesh = null!;
     private ZombieApocalypse.Core.Components.AudioEmitterComponent? _audioEmitter;
+    private PlayerStats? _playerStats;
+    private ZombieApocalypse.Core.Components.InventoryComponent? _inventory;
 
     // ── Runtime State ──────────────────────────────────────────────
     private Vector3 _moveDirection;
@@ -69,6 +71,8 @@ public partial class PlayerController : CharacterBody3D
         _camera = _cameraPivot.GetNode<Camera3D>("Camera3D");
         _mesh = GetNode<Node3D>("Mesh");
         _audioEmitter = GetNodeOrNull<ZombieApocalypse.Core.Components.AudioEmitterComponent>("AudioEmitterComponent");
+        _playerStats = GetNodeOrNull<PlayerStats>("PlayerStats");
+        _inventory = GetNodeOrNull<ZombieApocalypse.Core.Components.InventoryComponent>("InventoryComponent");
 
         SetupIsometricCamera();
 
@@ -196,7 +200,16 @@ public partial class PlayerController : CharacterBody3D
             }
         }
 
-        _isSprinting = Input.IsActionPressed("sprint") || Input.IsKeyPressed(Key.Shift) || Input.IsPhysicalKeyPressed(Key.Shift);
+        bool wantsSprint = Input.IsActionPressed("sprint") || Input.IsKeyPressed(Key.Shift) || Input.IsPhysicalKeyPressed(Key.Shift);
+        if (_playerStats != null)
+        {
+            _isSprinting = wantsSprint && IsMoving && _playerStats.CanSprint();
+            _playerStats.SetSprinting(_isSprinting);
+        }
+        else
+        {
+            _isSprinting = wantsSprint && IsMoving;
+        }
 
         _moveDirection = MathUtils.InputToIsometricDirection(
             inputDir,
@@ -225,8 +238,9 @@ public partial class PlayerController : CharacterBody3D
     /// </summary>
     private void ApplyMovement(float dt)
     {
+        float speedMod = (_inventory != null && _inventory.IsEncumbered) ? 0.75f : 1.0f;
         float targetSpeed = IsMoving
-            ? MoveSpeed * (_isSprinting ? SprintMultiplier : 1.0f)
+            ? MoveSpeed * (_isSprinting ? SprintMultiplier : 1.0f) * speedMod
             : 0f;
 
         var v = Velocity;

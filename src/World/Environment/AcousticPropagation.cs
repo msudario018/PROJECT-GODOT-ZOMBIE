@@ -83,8 +83,6 @@ public partial class AcousticPropagation : Node
             finalRadius *= RainAttenuationFactor;
         }
 
-        float finalRadiusSq = finalRadius * finalRadius;
-
         // Propagate to registered sensory systems
         foreach (var listener in _listeners)
         {
@@ -94,7 +92,10 @@ public partial class AcousticPropagation : Node
             var listenerPos = listener.GlobalPosition;
             float distSq = MathUtils.DistanceSquaredXZ(origin, listenerPos);
 
-            if (distSq <= finalRadiusSq)
+            // Per-listener hearing radius: base radius × sensitivity (night frenzy bonus included)
+            float listenerRadius = finalRadius * listener.EffectiveHearingSensitivity;
+
+            if (distSq <= listenerRadius * listenerRadius)
             {
                 listener.OnHeardSound(origin, finalRadius, type);
             }

@@ -36,12 +36,22 @@ public partial class ZombieBase : CharacterBody3D
     [Export] public float SpatialQueryRadius = 6.0f;
 
     // Component References
-    public HealthComponent Health { get; private set; } = null!;
-    public SensorySystem Sensory { get; private set; } = null!;
-    public AudioEmitterComponent AudioEmitter { get; private set; } = null!;
-    public StateMachine StateMachine { get; private set; } = null!;
-    public NavigationAgent3D NavAgent { get; private set; } = null!;
-    public Node3D Mesh { get; private set; } = null!;
+    // Lazily resolved: StateMachine (a child) activates the initial state in its
+    // own _Ready, which runs BEFORE ZombieBase._Ready — so states must be able to
+    // reach these components at that point.
+    private HealthComponent? _health;
+    private SensorySystem? _sensory;
+    private AudioEmitterComponent? _audioEmitter;
+    private StateMachine? _stateMachine;
+    private NavigationAgent3D? _navAgent;
+    private Node3D? _mesh;
+
+    public HealthComponent Health => _health ??= GetNode<HealthComponent>("HealthComponent");
+    public SensorySystem Sensory => _sensory ??= GetNode<SensorySystem>("SensorySystem");
+    public AudioEmitterComponent AudioEmitter => _audioEmitter ??= GetNode<AudioEmitterComponent>("AudioEmitterComponent");
+    public StateMachine StateMachine => _stateMachine ??= GetNode<StateMachine>("StateMachine");
+    public NavigationAgent3D NavAgent => _navAgent ??= GetNode<NavigationAgent3D>("NavigationAgent3D");
+    public Node3D Mesh => _mesh ??= GetNode<Node3D>("Mesh");
 
     // Runtime state
     public bool IsDead => Health != null && !Health.IsAlive;
@@ -52,13 +62,6 @@ public partial class ZombieBase : CharacterBody3D
 
     public override void _Ready()
     {
-        Health = GetNode<HealthComponent>("HealthComponent");
-        Sensory = GetNode<SensorySystem>("SensorySystem");
-        AudioEmitter = GetNode<AudioEmitterComponent>("AudioEmitterComponent");
-        StateMachine = GetNode<StateMachine>("StateMachine");
-        NavAgent = GetNode<NavigationAgent3D>("NavigationAgent3D");
-        Mesh = GetNode<Node3D>("Mesh");
-
         Health.Died += OnDied;
         Health.DamageTaken += OnDamageTaken;
 
@@ -115,6 +118,14 @@ public partial class ZombieBase : CharacterBody3D
     /// Checks whether this zombie should use horde flow-field navigation
     /// instead of individual NavigationAgent3D.
     /// </summary>
+    /// <summary>
+    /// Move speed including the night frenzy modifier from <see cref="World.Environment.DayNightCycle"/>.
+    /// At night all zombies become faster (×1.35). AI states should use this
+    /// instead of the raw <see cref="MoveSpeed"/> export.
+    /// </summary>
+    public float EffectiveMoveSpeed =>
+        MoveSpeed * (World.Environment.DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f);
+
     public bool ShouldUseFlowField()
     {
         if (FlowFieldNavigator.Instance == null) return false;

@@ -24,6 +24,16 @@ public partial class SensorySystem : Node3D
     [ExportGroup("Hearing")]
     [Export] public float HearingSensitivity = 1.0f;
 
+    /// <summary>
+    /// Night-frenzy modifiers from <see cref="DayNightCycle"/>: at night zombies
+    /// see ~35% further and hear ~35% better.
+    /// </summary>
+    public float EffectiveSightRange =>
+        SightRange * (DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f);
+
+    public float EffectiveHearingSensitivity =>
+        HearingSensitivity * (DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f);
+
     [Signal] public delegate void TargetSpottedEventHandler(Node3D target);
     [Signal] public delegate void TargetLostEventHandler();
     [Signal] public delegate void SoundHeardEventHandler(Vector3 position, int soundType);
@@ -87,6 +97,7 @@ public partial class SensorySystem : Node3D
         float distSq = MathUtils.DistanceSquaredXZ(myPos, targetPos);
 
         bool detected = false;
+        float sightRange = EffectiveSightRange;
 
         // 1. Proximity check (immediate awareness in close radius)
         if (distSq <= ProximityRange * ProximityRange)
@@ -94,7 +105,7 @@ public partial class SensorySystem : Node3D
             detected = CheckLineOfSight(myPos, targetPos);
         }
         // 2. Vision cone check
-        else if (distSq <= SightRange * SightRange)
+        else if (distSq <= sightRange * sightRange)
         {
             // Calculate forward direction in XZ plane
             Vector3 forward = -GlobalTransform.Basis.Z;
@@ -104,7 +115,7 @@ public partial class SensorySystem : Node3D
                 float facingAngle = Mathf.Atan2(forward.X, forward.Z);
                 float halfAngleRad = Mathf.DegToRad(SightAngleDeg * 0.5f);
 
-                if (MathUtils.IsInCone(myPos, facingAngle, halfAngleRad, targetPos, SightRange))
+                if (MathUtils.IsInCone(myPos, facingAngle, halfAngleRad, targetPos, sightRange))
                 {
                     detected = CheckLineOfSight(myPos, targetPos);
                 }
