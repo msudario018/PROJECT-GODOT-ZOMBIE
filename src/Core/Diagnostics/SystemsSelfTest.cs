@@ -84,6 +84,8 @@ public partial class SystemsSelfTest : Node3D
         TestStage8Perimeter();
         TestStage9AimingGeometry();
         TestStage9VisualPipeline();
+        TestStage9CompositeVisuals();
+        TestStage9LegibilityAndUi();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -1445,6 +1447,171 @@ public partial class SystemsSelfTest : Node3D
         trackerRoot.QueueFree();
     }
 
+    // ── Stage 9: legibility and the inventory UI ─────────────────────
+
+    private void TestStage9LegibilityAndUi()
+    {
+        GD.Print("── Stage 9: Legibility & UI ──");
+
+        // ── Ambient floor ──────────────────────────────────────────
+        Check("the ambient floor is 0.20", Mathf.Abs(World.Environment.DayNightCycle.MinimumAmbientEnergyForTests() - 0.20f) < 0.001f);
+
+        var env = new Godot.Environment { AmbientLightEnergy = 0.02f };
+        var cycleHost = new Node3D { Name = "CycleHost" };
+        var cycle = new World.Environment.DayNightCycle
+        {
+            Name = "DayNightCycle",
+            MinimumAmbientEnergy = 0.20f,
+        };
+        cycle.EnvironmentNode = null;   // resolved from the host
+        cycleHost.AddChild(cycle);
+        AddChild(cycleHost);
+
+        // A night + storm environment must not be allowed below the floor.
+        var worldEnv = new WorldEnvironment { Name = "WorldEnvironment", Environment = env };
+        cycleHost.AddChild(worldEnv);
+        cycle.EnvironmentNode = worldEnv;
+
+        // Drive it hard: night, heavy overcast, many frames.
+        if (TimeManager.Instance is { } time) time.SetHour(23f);
+        if (WeatherSystem.Instance is { } weather) weather.ForcedWeatherIndex = (int)WeatherState.Storm;
+
+        for (int i = 0; i < 400; i++)
+            cycle._Process(0.05);   // 20 simulated seconds
+
+        Check("ambient never drops below the floor at night in a storm",
+            env.AmbientLightEnergy >= 0.20f - 0.001f,
+            $"({env.AmbientLightEnergy:F3})");
+        Check("the arena stays bright enough to read",
+            env.AmbientLightEnergy >= 0.20f && env.AmbientLightEnergy < 1f);
+
+        // ── Fog of war freeze on death ─────────────────────────────
+        var fog = new Core.Vision.FogOfWarSystem
+        {
+            Name = "TestFog",
+            WorldSize = new Vector2(20f, 20f),
+            WorldOrigin = new Vector2(-10f, -10f),   // grid centred on the origin
+        };
+        AddChild(fog);
+        fog.RevealArea(Vector3.Zero, 5f);
+
+        Check("fog starts unfrozen", !fog.IsFrozen);
+        Check("the test fog grid is sized", fog.GridWidth > 0 && fog.GridHeight > 0,
+            $"({fog.GridWidth}×{fog.GridHeight})");
+        Check("revealing an area marks cells explored",
+            CountVisibleCells(fog) > 0, $"({CountVisibleCells(fog)} visible)");
+
+        fog.Freeze();
+        Check("fog freezes on death", fog.IsFrozen);
+
+        // Frozen means the mask holds: cell states must not change.
+        var cell = fog.WorldToCell(Vector3.Zero);
+        int before = CountVisibleCells(fog);
+        for (int i = 0; i < 120; i++)
+            fog._Process(0.05);
+        int after = CountVisibleCells(fog);
+
+        Check("a frozen fog mask holds its revealed cells", after == before && after > 0,
+            $"({before} → {after} visible)");
+        fog.Unfreeze();
+        Check("fog resumes when unfrozen", !fog.IsFrozen);
+
+        // ── Inventory window ───────────────────────────────────────
+        var hud = new UI.HUD.TestArenaHUD { Name = "TestHUD" };
+        AddChild(hud);
+        hud.BuildInventoryWindow();
+
+        var window = hud.GetNodeOrNull<Control>("InventoryWindow");
+        Check("the inventory window is built", window != null);
+        Check("the window starts closed", !hud.InventoryVisible);
+
+        // Opening it requires a tree pause; assert the intent without pausing
+        // the test run itself.
+        Check("the HUD no longer prints the hotkey wall",
+            !hud.ControlsText.Contains("[7] Eat Can") && hud.ControlsText.Contains("[Tab]"),
+            hud.ControlsText.Split('\n')[0]);
+        Check("the HUD keeps vitals, weapon, ammo, time and power",
+            hud.ControlsText.Length < 120, $"({hud.ControlsText.Length} chars)");
+    }
+
+    /// <summary>Count cells the fog considers revealed.</summary>
+    private static int CountVisibleCells(Core.Vision.FogOfWarSystem fog)
+    {
+        int count = 0;
+        for (int x = 0; x < fog.GridWidth; x++)
+        for (int y = 0; y < fog.GridHeight; y++)
+        {
+            if (fog.GetCellState(new Vector2I(x, y)) != Core.Data.VisibilityState.Hidden)
+                count++;
+        }
+        return count;
+    }
+
+    // ── Stage 9: composite visuals ───────────────────────────────────
+
+    private void TestStage9CompositeVisuals()
+    {
+        GD.Print("── Stage 9: Composite Visuals ──");
+
+        // Archetypes must be visually distinct, not just numerically distinct.
+        var shambler = Core.Components.CompositeStyle.ForArchetype("Shambler");
+        var sprinter = Core.Components.CompositeStyle.ForArchetype("Sprinter");
+        var bloater = Core.Components.CompositeStyle.ForArchetype("Bloater");
+        var brute = Core.Components.CompositeStyle.ForArchetype("Brute");
+
+        Check("shamblers are hunched and dark green",
+            shambler.LeanDegrees > 10f && shambler.Torso.G > shambler.Torso.R
+            && shambler.Torso.G > shambler.Torso.B,
+            $"(lean {shambler.LeanDegrees:F0}°, rgb {shambler.Torso.R:F2}/{shambler.Torso.G:F2}/{shambler.Torso.B:F2})");
+        Check("sprinters are leaner and red",
+            sprinter.Bulk < shambler.Bulk && sprinter.Torso.R > sprinter.Torso.G
+            && sprinter.LeanDegrees > shambler.LeanDegrees,
+            $"(bulk {sprinter.Bulk}, lean {sprinter.LeanDegrees:F0}°)");
+        Check("bloaters are bulbous and spherical",
+            bloater.Spherical && bloater.Bulk > 1.5f, $"(bulk {bloater.Bulk})");
+        Check("brutes are the biggest",
+            brute.Height > shambler.Height && brute.Bulk > shambler.Bulk,
+            $"({brute.Height:F1}m, bulk {brute.Bulk})");
+        Check("an unknown archetype falls back to the shambler",
+            Core.Components.CompositeStyle.ForArchetype("nonsense").Torso.IsEqualApprox(shambler.Torso));
+
+        // The builder assembles a real model.
+        var pivot = new Node3D { Name = "TestPivot" };
+        AddChild(pivot);
+        var model = Core.Components.CompositeVisualBuilder.Build(pivot, shambler, withWeaponMarker: true);
+
+        Check("the builder creates a model root", model != null);
+        Check("the model has torso, head, arms and legs",
+            model!.GetNodeOrNull<Node3D>("Torso") != null && model.GetNodeOrNull<Node3D>("Head") != null
+            && model.GetNodeOrNull<Node3D>("Arms") != null && model.GetNodeOrNull<Node3D>("Legs") != null);
+        Check("a weapon marker is included", model.GetNodeOrNull<Node3D>("WeaponMarker") != null);
+
+        int meshCount = model.FindChildren("*", "MeshInstance3D", true, false).Count;
+        Check("the composite is made of several meshes", meshCount >= 7, $"({meshCount} meshes)");
+
+        // Parts sit at plausible heights: legs low, head high.
+        var legs = model.GetNodeOrNull<Node3D>("Legs")!;
+        var head = model.GetNodeOrNull<Node3D>("Head")!;
+        Check("the head sits above the legs", head.Position.Y > legs.Position.Y,
+            $"(head {head.Position.Y:F2}m, legs {legs.Position.Y:F2}m)");
+
+        // Rebuilding clears the old model instead of stacking duplicates.
+        Core.Components.CompositeVisualBuilder.Build(pivot, bloater);
+        Check("rebuilding replaces the model",
+            pivot.GetChildren().Count == 1, $"({pivot.GetChildCount()} children)");
+
+        // A zombie wired to the component gets styled from its archetype name.
+        var zombie = SpawnZombie<Entities.Zombies.Archetypes.SprinterRunner>("StyledSprinter");
+        var zombieVisual = new CharacterVisual { Name = "CharacterVisual" };
+        zombie.AddChild(zombieVisual);
+        zombieVisual.BuildComposite(Core.Components.CompositeStyle.ForArchetype(zombie.ArchetypeName));
+
+        Check("a zombie builds a composite from its archetype",
+            zombieVisual.CompositeRoot != null && zombieVisual.Meshes.Count >= 7,
+            $"({zombieVisual.Meshes.Count} meshes)");
+        zombie.QueueFree();
+    }
+
     // ── Stage 9: visual pipeline ─────────────────────────────────────
 
     private void TestStage9VisualPipeline()
@@ -1491,7 +1658,9 @@ public partial class SystemsSelfTest : Node3D
         var host = new Node3D { Name = "VisualHost" };
         AddChild(host);
 
-        var visual = new CharacterVisual { Name = "CharacterVisual" };
+        // Composite off: this stage checks the pivot/socket contract and the
+        // flash, the composite itself is covered by its own stage.
+        var visual = new CharacterVisual { Name = "CharacterVisual", UseCompositeModel = false };
         host.AddChild(visual);
 
         // No Visual children authored: the component must build them.

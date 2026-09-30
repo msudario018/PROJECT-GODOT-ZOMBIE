@@ -31,6 +31,14 @@ public partial class CharacterVisual : Node3D
     [Export] public bool HideFallbackWhenModelLoaded = true;
     /// <summary>Uniform scale applied to an imported model.</summary>
     [Export] public float ModelScale = 1.0f;
+    /// <summary>Build a stylised composite model (torso/head/arms/legs) instead of the
+    /// capsule stand-in. Ignored once an imported model is loaded.</summary>
+    [Export] public bool UseCompositeModel = true;
+    /// <summary>Styling preset for the composite build.</summary>
+    [Export] public CompositeStyle.Preset StylePreset = CompositeStyle.Preset.Survivor;
+
+    /// <summary>Resolved style for the current build (set by archetype code).</summary>
+    public CompositeStyle Style { get; private set; } = CompositeStyle.Survivor;
 
     [ExportGroup("Hit Flash")]
     [Export] public Color FlashColor = new(1f, 0.25f, 0.2f);
@@ -88,6 +96,41 @@ public partial class CharacterVisual : Node3D
 
         if (ModelScene != null)
             LoadModel(ModelScene);
+        else if (UseCompositeModel && _fallback != null)
+            BuildComposite(CompositeStyle.ForPreset(StylePreset));
+    }
+
+    /// <summary>Root of the generated composite model, if one was built.</summary>
+    public Node3D? CompositeRoot { get; private set; }
+
+    /// <summary>
+    /// Replace the primitive stand-in with a stylised composite. Safe to call
+    /// again to restyle; the model is rebuilt from scratch each time.
+    /// </summary>
+    public Node3D? BuildComposite(CompositeStyle style)
+    {
+        if (_fallback == null) return null;
+
+        Style = style;
+        IsUsingImportedModel = false;
+        _fallback.Visible = true;
+
+        // Drop any previous model so restyling never stacks two.
+        var previous = _fallback.GetNodeOrNull<Node3D>("CompositeHolder");
+        if (previous != null)
+        {
+            _fallback.RemoveChild(previous);
+            previous.QueueFree();
+        }
+
+        // The pivot rotates, so the model must be built flat under it.
+        var root = new Node3D { Name = "CompositeHolder" };
+        _fallback.AddChild(root);
+        CompositeVisualBuilder.Build(root, style, withWeaponMarker: true);
+        CompositeRoot = root;
+
+        CacheMeshes();
+        return root;
     }
 
     /// <summary>

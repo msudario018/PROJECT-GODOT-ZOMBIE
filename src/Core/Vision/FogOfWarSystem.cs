@@ -44,6 +44,12 @@ public partial class FogOfWarSystem : Node
     /// <summary>Grid height in cells.</summary>
     public int GridHeight { get; private set; }
 
+    /// <summary>
+    /// When frozen the visibility mask stops animating and holds whatever was
+    /// last revealed. Set on player death so the scene stays visible.
+    /// </summary>
+    public bool IsFrozen { get; private set; }
+
     // ── Internal State ─────────────────────────────────────────────
     private float[,] _currentAlpha = null!;  // Current visual alpha (0=visible, 1=hidden)
     private float[,] _targetAlpha = null!;   // Target alpha to lerp toward
@@ -90,6 +96,18 @@ public partial class FogOfWarSystem : Node
 
     public override void _Process(double delta)
     {
+        // Frozen = hold the last revealed mask (used on death, so the arena stays
+        // legible behind the death banner instead of fading to black).
+        if (IsFrozen)
+        {
+            if (_dirty)
+            {
+                UpdateFogTexture();
+                _dirty = false;
+            }
+            return;
+        }
+
         float dt = (float)delta;
         bool anyChanged = false;
 
@@ -165,7 +183,15 @@ public partial class FogOfWarSystem : Node
         _dirty = true;
     }
 
-    /// <summary>Instantly reveal an area of cells around a world position.</summary>
+    /// <summary>Stop animating the mask and hold the last revealed state.</summary>
+    public void Freeze() => IsFrozen = true;
+
+    /// <summary>Resume animating the mask (new run, load, respawn).</summary>
+    public void Unfreeze() => IsFrozen = false;
+
+    /// <summary>
+    /// Reveal an area of cells around a world position.
+    /// </summary>
     public void RevealArea(Vector3 center, float radius)
     {
         int cellRadius = Mathf.CeilToInt(radius / CellSize);

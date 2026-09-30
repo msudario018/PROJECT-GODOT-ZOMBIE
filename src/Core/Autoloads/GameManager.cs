@@ -17,6 +17,14 @@ namespace ZombieApocalypse.Core.Autoloads;
 /// </remarks>
 public partial class GameManager : Node
 {
+    /// <summary>
+    /// Scene references, resolved on death so the death screen can be made
+    /// legible (fog-of-war freeze, ambient lift). Set by DayNightCycle.
+    /// </summary>
+    public WorldEnvironment? EnvironmentNode { get; set; }
+    /// <summary>Ambient floor to fall back on. Set by DayNightCycle.</summary>
+    public float MinimumAmbientEnergy { get; set; } = 0.20f;
+
     /// <summary>Singleton instance, set in _Ready.</summary>
     public static GameManager? Instance { get; private set; }
 
@@ -73,6 +81,15 @@ public partial class GameManager : Node
     {
         if (CurrentState == GameState.GameOver) return;
         SetState(GameState.GameOver);
+
+        // Hold the last visible fog-of-war mask and lift the ambient floor a
+        // little, so the death screen shows the arena instead of a black frame.
+        ZombieApocalypse.Core.Vision.FogOfWarSystem.Instance?.Freeze();
+
+        if (EnvironmentNode != null && EnvironmentNode.Environment != null)
+            EnvironmentNode.Environment.AmbientLightEnergy =
+                Mathf.Max(EnvironmentNode.Environment.AmbientLightEnergy, MinimumAmbientEnergy * 2f);
+
         SaveManager.Instance?.HandlePlayerDeath();
         GD.Print("[GameManager] PLAYER DIED — press [P] to restart.");
     }

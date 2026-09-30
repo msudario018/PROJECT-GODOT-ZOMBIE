@@ -100,6 +100,10 @@ public partial class ZombieBase : CharacterBody3D
         _visual = GetNodeOrNull<CharacterVisual>("CharacterVisual");
         _visual?.CacheMeshes();
 
+        // Stylise the archetype so a Shambler does not look like a Sprinter.
+        if (_visual != null)
+            _visual.BuildComposite(Core.Components.CompositeStyle.ForArchetype(ArchetypeName));
+
         // Snapshot the authored stats; the difficulty preset is applied on read
         // (EffectiveMoveSpeed / EffectiveAttackDamage) so it can change mid-run.
         BaseMoveSpeed = MoveSpeed;

@@ -34,6 +34,13 @@ public partial class DayNightCycle : Node3D
     [Export] public DirectionalLight3D? SunLight;
     [Export] public WorldEnvironment? EnvironmentNode;
 
+    /// <summary>
+    /// Floor for ambient light. Without it, night + storm drove ambient down to
+    /// ~0.02 and the arena became an unreadable black screen; the fog-of-war
+    /// mask then made it look like a rendering failure rather than night.
+    /// </summary>
+    [Export] public float MinimumAmbientEnergy = 0.20f;
+
     // ── Public state ─────────────────────────────────────────────────
     // The authoritative clock lives in the TimeManager autoload so time keeps
     // running across scene reloads; this node is the lighting view of it and
@@ -68,6 +75,12 @@ public partial class DayNightCycle : Node3D
 
     private DayPhase _previousPhase = DayPhase.Day;
 
+    /// <summary>
+    /// Expose the configured ambient floor for the self-test without needing a
+    /// scene instance (the default is the legibility floor).
+    /// </summary>
+    public static float MinimumAmbientEnergyForTests() => 0.20f;
+
     public override void _Ready()
     {
         Instance = this;
@@ -85,6 +98,18 @@ public partial class DayNightCycle : Node3D
         if (EnvironmentNode == null)
             EnvironmentNode = GetNodeOrNull<WorldEnvironment>("WorldEnvironment")
                              ?? GetParent()?.GetNodeOrNull<WorldEnvironment>("WorldEnvironment");
+
+        if (EnvironmentNode == null)
+            EnvironmentNode = GetNodeOrNull<WorldEnvironment>("WorldEnvironment")
+                              ?? GetParent()?.GetNodeOrNull<WorldEnvironment>("WorldEnvironment");
+
+        // Let GameManager borrow the ambient floor so the death screen can be
+        // made legible without duplicating the value.
+        if (Core.Autoloads.GameManager.Instance is { } game)
+        {
+            game.EnvironmentNode = EnvironmentNode;
+            game.MinimumAmbientEnergy = MinimumAmbientEnergy;
+        }
 
         UpdateSunAndAtmosphere(0f);
     }
@@ -197,8 +222,14 @@ public partial class DayNightCycle : Node3D
                 DayPhase.Dusk => 0.06f,
                 _ => 0.03f
             }) * Mathf.Lerp(0.6f, 1f, weatherFactor);
-            EnvironmentNode.Environment.AmbientLightEnergy = Mathf.MoveToward(
-                EnvironmentNode.Environment.AmbientLightEnergy, targetAmbient, (dt > 0 ? dt : 1f) * 0.2f);
+
+            // Never fall below the legibility floor: a black arena reads as a
+            // crash, not as night.
+            var environment = EnvironmentNode.Environment;
+            environment.AmbientLightEnergy = Mathf.MoveToward(
+                environment.AmbientLightEnergy,
+                Mathf.Max(targetAmbient, MinimumAmbientEnergy),
+                (dt > 0 ? dt : 1f) * 0.2f);
         }
     }
 

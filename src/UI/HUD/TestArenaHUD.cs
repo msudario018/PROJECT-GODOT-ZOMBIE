@@ -38,6 +38,7 @@ public partial class TestArenaHUD : CanvasLayer
     private Label _inventorySummaryLabel = null!;
     private Label _zombieCountLabel = null!;
     private Label _statusLabel = null!;
+    private Label? _controlsLabel;
 
     // Group counts are cached at 2 Hz instead of polled every frame.
     private float _countRefresh;
@@ -56,6 +57,7 @@ public partial class TestArenaHUD : CanvasLayer
     {
         BuildUI();
         BuildPauseMenu();
+        BuildInventoryWindow();
 
         var player = GetTree().GetFirstNodeInGroup("player") as PlayerController;
         if (player != null)
@@ -190,12 +192,23 @@ public partial class TestArenaHUD : CanvasLayer
     partial void UpdatePhase7UI(double delta);
     partial void HandlePhase7Key(InputEventKey key);
 
+    /// <summary>Text of the on-screen control hints (kept to a single line).</summary>
+    internal string ControlsText => _controlsLabel?.Text ?? "";
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
 
         // The pause menu swallows input while it is open (Esc closes it).
         if (ForwardPauseMenuKey(key)) return;
+
+        // [Tab] / [I] open the backpack + crafting window.
+        if (key.Keycode == Key.Tab || key.Keycode == Key.I)
+        {
+            ToggleInventoryWindow();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
 
         // F1: Toggle Fog of War
         if (key.Keycode == Key.F1)
@@ -455,20 +468,15 @@ public partial class TestArenaHUD : CanvasLayer
         _statusLabel.AddThemeColorOverride("font_color", new Color(0.5f, 0.8f, 1.0f));
         vbox.AddChild(_statusLabel);
 
-        // Controls help
-        var controlsLabel = new Label();
-        controlsLabel.Text = 
-            "[WASD] Move | [Shift] Sprint (Consumes Stamina)\n" +
-            "[E] Interact (Search Loot Crate, Bury/Burn Corpse, Toggle Door)\n" +
-            "[4] Crowbar | [5] M9 Pistol | [6] Shotgun | [Q] Cycle Weapon\n" +
-            "[LMB] Attack/Fire | [R] Reload | [F] Flashlight | [F1] Fog\n" +
-            "[7] Eat Can | [8] Drink Water | [9] Use Bandage\n" +
-            "[C] Craft Bandage | [V] Craft First Aid | [B] Craft Ammo\n" +
-            "[X] Sever/Repair Cable | [G] Generator On/Off\n" +
-            "[1] Wood Fence | [2] Chain Link | [3] Door | [RMB] Cancel Build";
-        controlsLabel.AddThemeFontSizeOverride("font_size", 11);
-        controlsLabel.AddThemeColorOverride("font_color", new Color(0.75f, 0.75f, 0.75f));
-        vbox.AddChild(controlsLabel);
+        // Controls help: one line only. The full list lives in the [Tab] window,
+        // which is why the hotkey wall is gone.
+        _controlsLabel = new Label
+        {
+            Text = "[Tab] Inventory & Crafting   |   [Esc] Pause & Settings   |   [F1] Fog",
+        };
+        _controlsLabel.AddThemeFontSizeOverride("font_size", 11);
+        _controlsLabel.AddThemeColorOverride("font_color", new Color(0.7f, 0.7f, 0.7f));
+        vbox.AddChild(_controlsLabel);
 
         AddChild(rootPanel);
     }
