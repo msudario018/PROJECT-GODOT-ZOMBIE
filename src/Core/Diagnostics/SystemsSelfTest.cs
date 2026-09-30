@@ -75,6 +75,7 @@ public partial class SystemsSelfTest : Node3D
         TestStage2Services();
         TestStage3Persistence();
         TestStage4WeatherAndSeasons();
+        TestStage5PauseMenu();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -1042,6 +1043,104 @@ public partial class SystemsSelfTest : Node3D
         Check("health clamps to max", Mathf.Abs(health.CurrentHealth - health.MaxHealth) < 0.01f);
 
         playerRoot.QueueFree();
+    }
+
+    // ── Stage 5: pause / settings menu ──────────────────────────────
+
+    private void TestStage5PauseMenu()
+    {
+        GD.Print("── Stage 5: Pause & Settings Menu ──");
+
+        // The self-test scene has no HUD, so build a real one against this tree.
+        var hud = new UI.HUD.TestArenaHUD { Name = "TestHUD" };
+        AddChild(hud);
+
+        var menu = hud.GetNodeOrNull<Control>("PauseMenu");
+        Check("pause menu is built by the HUD", menu != null);
+        if (menu == null) { hud.QueueFree(); return; }
+
+        Check("pause menu starts hidden", !menu!.Visible && !hud.PauseMenuVisible);
+
+        // ── Visibility follows the pause state ─────────────────────
+        hud.SetPauseMenuVisible(true);
+        Check("menu shows when opened", menu.Visible && hud.PauseMenuVisible);
+
+        hud.SetPauseMenuVisible(false);
+        Check("menu hides when closed", !menu.Visible && !hud.PauseMenuVisible);
+
+        // ── Key routing: menu swallows gameplay keys, not Esc ──────
+        hud.SetPauseMenuVisible(true);
+        Check("menu swallows gameplay keys while open",
+            hud.ForwardPauseMenuKey(new InputEventKey { Keycode = Key.Key7 }));
+        Check("menu lets Esc through to GameManager",
+            !hud.ForwardPauseMenuKey(new InputEventKey { Keycode = Key.Escape }));
+        hud.SetPauseMenuVisible(false);
+        Check("keys pass through while the menu is closed",
+            !hud.ForwardPauseMenuKey(new InputEventKey { Keycode = Key.Key7 }));
+
+        // ── The menu actually drives ConfigManager ────────────────
+        var config = ConfigManager.Instance;
+        Check("ConfigManager is available to the menu", config != null);
+
+        if (config != null)
+        {
+            DifficultyPreset original = config.Difficulty;
+            float originalSfx = config.SfxVolume;
+
+            // Simulate the "Cycle Difficulty" button press.
+            hud.SetPauseMenuVisible(true);
+            config.CycleDifficulty();
+            Check("cycling difficulty changes the preset", config.Difficulty != original,
+                $"({original} → {config.Difficulty})");
+
+            // Simulate dragging the effects slider to 0.3.
+            config.SetSfxVolume(0.3f);
+            hud.RefreshMenuValues();
+            Check("menu slider value reaches ConfigManager",
+                Mathf.Abs(config.SfxVolume - 0.3f) < 0.001f, $"(sfx {config.SfxVolume})");
+
+            // And that it survived a disk reload (the menu promises persistence).
+            config.Load();
+            Check("menu volume changes persist across a reload",
+                Mathf.Abs(config.SfxVolume - 0.3f) < 0.001f, $"(sfx {config.SfxVolume})");
+
+            config.SetDifficulty(original);
+            config.SetSfxVolume(originalSfx);
+        }
+
+        // ── Save buttons enable only when a save exists ───────────
+        var saves = SaveManager.Instance;
+        Check("SaveManager is available to the menu", saves != null);
+
+        if (saves != null)
+        {
+            string savedPath = saves.SavePath;
+            bool hadSave = saves.HasSave();
+
+            // Guarantee a known state, then restore the player's own file.
+            saves.DeleteSave();
+            hud.RefreshMenuValues();
+            Check("load/delete are disabled with no save", !saves.HasSave());
+
+            saves.SaveGame("pause menu test");
+            hud.RefreshMenuValues();
+            Check("menu can write a save", saves.HasSave());
+            Check("the written save parses back", saves.ReadSave() != null);
+
+            saves.DeleteSave();
+            hud.RefreshMenuValues();
+            Check("menu can delete a save", !saves.HasSave());
+            Check("deleting twice is safe", !saves.HasSave() && !Godot.FileAccess.FileExists(savedPath));
+
+            if (hadSave)
+            {
+                saves.SaveGame("restored");
+                Check("a pre-existing save is recreated after the menu test", saves.HasSave());
+            }
+        }
+
+        hud.SetPauseMenuVisible(false);
+        hud.QueueFree();
     }
 
     // ── Stage 4: weather and seasons ────────────────────────────────

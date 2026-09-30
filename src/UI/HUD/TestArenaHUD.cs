@@ -55,6 +55,7 @@ public partial class TestArenaHUD : CanvasLayer
     public override void _Ready()
     {
         BuildUI();
+        BuildPauseMenu();
 
         var player = GetTree().GetFirstNodeInGroup("player") as PlayerController;
         if (player != null)
@@ -182,6 +183,7 @@ public partial class TestArenaHUD : CanvasLayer
         }
 
         UpdatePhase7UI(delta);
+        UpdatePauseMenu(delta);
     }
 
     partial void BuildPhase7UI(VBoxContainer vbox);
@@ -191,6 +193,9 @@ public partial class TestArenaHUD : CanvasLayer
     public override void _UnhandledInput(InputEvent @event)
     {
         if (@event is not InputEventKey key || !key.Pressed || key.Echo) return;
+
+        // The pause menu swallows input while it is open (Esc closes it).
+        if (ForwardPauseMenuKey(key)) return;
 
         // F1: Toggle Fog of War
         if (key.Keycode == Key.F1)
