@@ -18,6 +18,7 @@ public partial class TestArenaHUD
     private Label? _npcLabel;
     private Label? _airdropLabel;
     private Label? _deathLabel;
+    private Label? _weatherLabel;
 
     private MoraleSystem? _moraleSystem;
     private SurvivorBase? _demoSurvivor;
@@ -43,6 +44,10 @@ public partial class TestArenaHUD
         _npcLabel = new Label { Text = "Survivors: 0 | Bandits: 0" };
         _npcLabel.AddThemeColorOverride("font_color", new Color(0.65f, 0.85f, 1.0f));
         vbox.AddChild(_npcLabel);
+
+        _weatherLabel = new Label { Text = "" };
+        _weatherLabel.AddThemeColorOverride("font_color", new Color(0.75f, 0.85f, 0.75f));
+        vbox.AddChild(_weatherLabel);
 
         _airdropLabel = new Label { Text = "" };
         _airdropLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.7f, 0.25f));
@@ -102,6 +107,14 @@ public partial class TestArenaHUD
         int banditCount = GetTree().GetNodesInGroup("bandits").Count;
         if (_npcLabel != null)
             _npcLabel.Text = $"Survivors: {survivorCount} | Bandits: {banditCount}";
+
+        if (_weatherLabel != null)
+        {
+            var weather = World.Environment.WeatherSystem.Instance;
+            _weatherLabel.Text = weather != null
+                ? $"Weather: {weather.CurrentWeather} ({weather.CurrentSeason} d{weather.DayOfSeason})"
+                : "";
+        }
 
         if (_airdropBannerTimer > 0f)
         {

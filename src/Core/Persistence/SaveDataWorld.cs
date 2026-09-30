@@ -74,6 +74,9 @@ public class CampData
     public bool AirdropDropped = false;
     public Vector3 AirdropPosition = Vector3.Zero;
     public List<SurvivorData> Survivors = new();
+    /// <summary>Weather and season (re-evaluated from the day counter on load).</summary>
+    public int WeatherState = 0;
+    public int Season = 0;
 
     public Dictionary ToDictionary() => new()
     {
@@ -82,6 +85,8 @@ public class CampData
         { "airdrop_dropped", AirdropDropped },
         { "airdrop_position", SaveJson.Vec(AirdropPosition) },
         { "survivors", SaveJson.Encode(Survivors, s => s.ToDictionary()) },
+        { "weather", WeatherState },
+        { "season", Season },
     };
 
     public static CampData FromDictionary(Dictionary d) => new()
@@ -91,6 +96,8 @@ public class CampData
         AirdropDropped = SaveJson.B(d, "airdrop_dropped"),
         AirdropPosition = SaveJson.V(SaveJson.A(d, "airdrop_position")),
         Survivors = SaveJson.DecodeList(d, "survivors", SurvivorData.FromDictionary),
+        WeatherState = SaveJson.I(d, "weather"),
+        Season = SaveJson.I(d, "season"),
     };
 }
 

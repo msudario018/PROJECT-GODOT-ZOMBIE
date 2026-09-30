@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using ZombieApocalypse.World.Environment;
 
 namespace ZombieApocalypse.Core.Autoloads;
@@ -44,6 +45,12 @@ public partial class TimeManager : Node
     [Signal] public delegate void DayPhaseChangedEventHandler(int newPhase);
     [Signal] public delegate void DayRolledEventHandler(int dayCount);
 
+    /// <summary>
+    /// C# event mirroring the <c>DayRolled</c> Godot signal, so plain C# systems
+    /// (weather, save) can subscribe without going through the signal bus.
+    /// </summary>
+    public event Action<int>? OnDayRolled;
+
     public override void _Ready()
     {
         Instance = this;
@@ -69,6 +76,7 @@ public partial class TimeManager : Node
         {
             DayCount++;
             EmitSignal(SignalName.DayRolled, DayCount);
+            OnDayRolled?.Invoke(DayCount);
             GD.Print($"[TimeManager] Day {DayCount} has begun.");
         }
 
@@ -106,16 +114,24 @@ public partial class TimeManager : Node
         RecomputePhase(announce: false);
     }
 
-    /// <summary>Deterministic clock advance for tests and save/load fast-forward.</summary>
+    /// <summary>
+    /// Deterministic clock advance for tests and save/load fast-forward.
+    /// Rolls the day counter once per midnight crossed, not just once overall.
+    /// </summary>
     public void Advance(float hours)
     {
-        float previous = CurrentHour;
-        CurrentHour = Mathf.PosMod(CurrentHour + hours, 24f);
-        if (CurrentHour < previous)
+        float target = CurrentHour + hours;
+        int midnights = Mathf.FloorToInt(target / 24f);
+
+        CurrentHour = Mathf.PosMod(target, 24f);
+
+        for (int i = 0; i < midnights; i++)
         {
             DayCount++;
             EmitSignal(SignalName.DayRolled, DayCount);
+            OnDayRolled?.Invoke(DayCount);
         }
+
         RecomputePhase(announce: true);
     }
 

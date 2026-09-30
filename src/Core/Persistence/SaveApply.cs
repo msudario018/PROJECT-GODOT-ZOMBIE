@@ -150,6 +150,11 @@ public static class SaveApply
         if (Tree?.GetFirstNodeInGroup("airdrop_events") is AirdropEvent airdrop)
             airdrop.RestoreState(data.AirdropDropped, data.AirdropPosition);
 
+        // Weather/season follow the restored day counter, so a save made on day 9
+        // comes back in the right season rather than a random one.
+        if (TimeManager.Instance is { } time)
+            WeatherSystem.Instance?.EvaluateForDay(time.DayCount, announce: false);
+
         ApplySurvivors(data.Survivors);
         return true;
     }

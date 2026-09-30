@@ -5,6 +5,7 @@ using ZombieApocalypse.Core.Data;
 using ZombieApocalypse.Core.Spatial;
 using ZombieApocalypse.Core.StateMachine;
 using ZombieApocalypse.Entities.Zombies.ZombieAI;
+using ZombieApocalypse.World.Environment;
 
 namespace ZombieApocalypse.Entities.Zombies;
 
@@ -131,8 +132,13 @@ public partial class ZombieBase : CharacterBody3D
     /// At night all zombies become faster (×1.35). AI states should use this
     /// instead of the raw <see cref="MoveSpeed"/> export.
     /// </summary>
+    /// <summary>Current weather, or Clear when no WeatherSystem is in the scene.</summary>
+    private WeatherState CurrentWeather => WeatherSystem.Instance?.CurrentWeather ?? WeatherState.Clear;
+
     public float EffectiveMoveSpeed =>
-        MoveSpeed * (World.Environment.DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f);
+        MoveSpeed
+        * (World.Environment.DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f)
+        * (World.Environment.WeatherSystem.Instance?.HordePressureMultiplier ?? 1f);
 
     public bool ShouldUseFlowField()
     {

@@ -78,6 +78,20 @@ public enum Season
 }
 
 /// <summary>
+/// Weather states driven by the WeatherSystem. Each state changes how much
+/// daylight reaches the ground, how fast the player dehydrates, and whether
+/// rotting miasma is washed out or left to spread.
+/// </summary>
+public enum WeatherState
+{
+    Clear,
+    Overcast,
+    Rain,
+    Storm,
+    Fog
+}
+
+/// <summary>
 /// Time-of-day phases for lighting, zombie behavior, and visibility.
 /// </summary>
 public enum TimeOfDay

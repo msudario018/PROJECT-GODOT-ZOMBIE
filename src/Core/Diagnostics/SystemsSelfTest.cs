@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ZombieApocalypse.Core.Audio;
@@ -73,6 +74,7 @@ public partial class SystemsSelfTest : Node3D
         TestStage1WiringFixes();
         TestStage2Services();
         TestStage3Persistence();
+        TestStage4WeatherAndSeasons();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -1040,6 +1042,132 @@ public partial class SystemsSelfTest : Node3D
         Check("health clamps to max", Mathf.Abs(health.CurrentHealth - health.MaxHealth) < 0.01f);
 
         playerRoot.QueueFree();
+    }
+
+    // ── Stage 4: weather and seasons ────────────────────────────────
+
+    private void TestStage4WeatherAndSeasons()
+    {
+        GD.Print("── Stage 4: Weather & Seasons ──");
+
+        var weather = new WeatherSystem { Name = "TestWeather", DaysPerSeason = 4 };
+        AddChild(weather);
+
+        int weatherEvents = 0;
+        int seasonEvents = 0;
+        Action<int>? onWeather = null;
+        Action<int>? onSeason = null;
+        if (EventBus.Instance != null)
+        {
+            onWeather = _ => weatherEvents++;
+            onSeason = _ => seasonEvents++;
+            EventBus.Instance.OnWeatherChanged += onWeather;
+            EventBus.Instance.OnSeasonChanged += onSeason;
+        }
+
+        // ── Season calendar ────────────────────────────────────────
+        weather.ForcedWeatherIndex = (int)WeatherState.Clear;   // isolate the calendar
+        weather.EvaluateForDay(1);
+        Check("day 1 is spring", weather.CurrentSeason == Season.Spring && weather.DayOfSeason == 1,
+            $"({weather.CurrentSeason} d{weather.DayOfSeason})");
+
+        weather.EvaluateForDay(4);
+        Check("the last spring day still reads spring",
+            weather.CurrentSeason == Season.Spring && weather.DayOfSeason == 4);
+
+        weather.EvaluateForDay(5);
+        Check("day 5 rolls into summer", weather.CurrentSeason == Season.Summer && weather.DayOfSeason == 1,
+            $"({weather.CurrentSeason} d{weather.DayOfSeason})");
+        Check("season change is broadcast", seasonEvents >= 1, $"({seasonEvents} events)");
+
+        weather.EvaluateForDay(13);
+        Check("day 13 is the first day of winter",
+            weather.CurrentSeason == Season.Winter && weather.DayOfSeason == 1,
+            $"({weather.CurrentSeason} d{weather.DayOfSeason})");
+
+        weather.EvaluateForDay(17);
+        Check("the calendar wraps back to spring after a year",
+            weather.CurrentSeason == Season.Spring, $"({weather.CurrentSeason})");
+
+        // ── Weather effects ────────────────────────────────────────
+        weather.ForcedWeatherIndex = (int)WeatherState.Clear;
+        weather.EvaluateForDay(1);
+        float clearDaylight = weather.DaylightFactor;
+
+        weather.ForcedWeatherIndex = (int)WeatherState.Storm;
+        weather.EvaluateForDay(2);
+        Check("storms darken the world", weather.DaylightFactor < clearDaylight,
+            $"(clear {clearDaylight:F2} → storm {weather.DaylightFactor:F2})");
+        Check("weather change is broadcast", weatherEvents >= 1, $"({weatherEvents} events)");
+        Check("storms suppress miasma", weather.MiasmaSuppression > 0.5f,
+            $"{weather.MiasmaSuppression:P0}");
+
+        weather.ForcedWeatherIndex = (int)WeatherState.Fog;
+        weather.EvaluateForDay(3);
+        Check("fog emboldens the horde", weather.HordePressureMultiplier > 1f,
+            $"×{weather.HordePressureMultiplier:F2}");
+        Check("fog leaves miasma alone", weather.MiasmaSuppression < 0.01f);
+
+        // ── Season effects ─────────────────────────────────────────
+        float springThirst = weather.ThirstDrainMultiplier;
+        weather.ForcedWeatherIndex = (int)WeatherState.Clear;
+        weather.EvaluateForDay(5);   // summer
+        float summerThirst = weather.ThirstDrainMultiplier;
+        weather.EvaluateForDay(13);  // winter
+        float winterThirst = weather.ThirstDrainMultiplier;
+
+        Check("summer dehydrates faster than spring", summerThirst > springThirst,
+            $"(spring ×{springThirst:F2} → summer ×{summerThirst:F2})");
+        Check("winter dehydrates slower than summer", winterThirst < summerThirst,
+            $"(winter ×{winterThirst:F2})");
+        Check("winter raises horde pressure", weather.HordePressureMultiplier >= 1.2f,
+            $"×{weather.HordePressureMultiplier:F2}");
+
+        // ── The clock drives the weather automatically ─────────────
+        weather.ForcedWeatherIndex = -1;
+        if (TimeManager.Instance is { } time)
+        {
+            time.OnDayRolled += weather.EvaluateForDayForSignal;
+            int dayBefore = weather.DayOfSeason;
+            time.Advance(24f * 8f);   // cross into a new day
+
+            Check("rolling the clock re-rolls the weather",
+                weather.DayOfSeason != dayBefore || time.DayCount > 3,
+                $"(day {time.DayCount}, season day {weather.DayOfSeason})");
+            time.OnDayRolled -= weather.EvaluateForDayForSignal;
+        }
+        else
+        {
+            Check("clock drives the weather", false, "(no TimeManager)");
+        }
+
+        // ── Weather survives a save/load round trip ─────────────────
+        if (SaveManager.Instance is { } saves && TimeManager.Instance is { } clock)
+        {
+            weather.ForcedWeatherIndex = (int)WeatherState.Storm;
+            weather.EvaluateForDay(clock.DayCount, announce: false);
+
+            var camp = saves.Capture().Camp;
+            Check("capture records the weather and season",
+                camp.WeatherState == (int)WeatherState.Storm && camp.Season == (int)weather.CurrentSeason,
+                $"({camp.WeatherState}, {camp.Season})");
+
+            // A save made on a later day must not come back in the wrong season.
+            clock.RestoreState(clock.DayCount + 4, 8f, false);
+            weather.EvaluateForDay(clock.DayCount, announce: false);
+            Check("a later day resolves to a different season",
+                (int)weather.CurrentSeason != camp.Season || clock.DayCount < 17,
+                $"(day {clock.DayCount} → {weather.CurrentSeason})");
+        }
+
+        if (EventBus.Instance != null && onWeather != null && onSeason != null)
+        {
+            EventBus.Instance.OnWeatherChanged -= onWeather;
+            EventBus.Instance.OnSeasonChanged -= onSeason;
+        }
+
+        weather.ForcedWeatherIndex = -1;
+        weather.QueueFree();
     }
 
 

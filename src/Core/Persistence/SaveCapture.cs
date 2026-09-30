@@ -164,6 +164,10 @@ public static class SaveCapture
         var data = new CampData
         {
             Morale = MoraleSystem.Instance?.Morale ?? 50f,
+            WeatherState = (int)(World.Environment.WeatherSystem.Instance?.CurrentWeather
+                                 ?? Core.Data.WeatherState.Clear),
+            Season = (int)(World.Environment.WeatherSystem.Instance?.CurrentSeason
+                           ?? Core.Data.Season.Spring),
         };
 
         // The camp stockpile is a container with a fixed manifest.

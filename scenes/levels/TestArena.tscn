@@ -16,6 +16,7 @@
 [ext_resource type="PackedScene" path="res://scenes/entities/zombies/archetypes/Bloater.tscn" id="14_bloater"]
 [ext_resource type="Script" path="res://src/World/Environment/CorpseManager.cs" id="15_corpse"]
 [ext_resource type="Script" path="res://src/World/Environment/DayNightCycle.cs" id="16_daynight"]
+[ext_resource type="Script" path="res://src/World/Environment/WeatherSystem.cs" id="17_weather"]
 [ext_resource type="Script" path="res://src/Systems/Loot/LootContainer.cs" id="17_loot"]
 [ext_resource type="Script" path="res://src/World/Power/PowerGrid.cs" id="18_powergrid"]
 [ext_resource type="Script" path="res://src/World/Power/Generation/CombustionGenerator.cs" id="19_generator"]
@@ -219,6 +220,9 @@ script = ExtResource("15_corpse")
 
 [node name="DayNightCycle" type="Node3D" parent="."]
 script = ExtResource("16_daynight")
+
+[node name="WeatherSystem" type="Node" parent="."]
+script = ExtResource("17_weather")
 
 [node name="LootCrateMed" type="StaticBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, 1)

@@ -1,5 +1,6 @@
 using Godot;
 using ZombieApocalypse.Core.Autoloads;
+using ZombieApocalypse.World.Environment;
 
 namespace ZombieApocalypse.Entities.Player;
 
@@ -64,7 +65,9 @@ public partial class PlayerStats : Node
 
         // Drain hunger and thirst over real time
         Hunger  = Mathf.Max(0f, Hunger  - HungerDrainRate  * dt);
-        Thirst  = Mathf.Max(0f, Thirst  - ThirstDrainRate  * dt);
+        // Heat and humidity raise the thirst drain (WeatherSystem owns the curve).
+        float thirstRate = ThirstDrainRate * (WeatherSystem.Instance?.ThirstDrainMultiplier ?? 1f);
+        Thirst  = Mathf.Max(0f, Thirst  - thirstRate * dt);
 
         // Stamina: drain on sprint, regen otherwise
         if (_isSprinting && Stamina > 0f)

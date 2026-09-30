@@ -1,5 +1,6 @@
 using Godot;
 using System;
+using ZombieApocalypse.Core.Data;
 
 namespace ZombieApocalypse.World.Environment;
 
@@ -54,6 +55,9 @@ public partial class DayNightCycle : Node3D
     public int DayCount => Time?.DayCount ?? 1;
 
     public bool IsNight => CurrentPhase == DayPhase.Night;
+
+    /// <summary>Current weather, or Clear when no WeatherSystem is in the scene.</summary>
+    private WeatherState CurrentWeather => WeatherSystem.Instance?.CurrentWeather ?? WeatherState.Clear;
 
     /// <summary>Zombie speed and hearing multiplier during night frenzy.</summary>
     public float ZombieNightMultiplier => Time?.ZombieNightMultiplier ?? (IsNight ? 1.35f : 1.0f);
@@ -168,18 +172,31 @@ public partial class DayNightCycle : Node3D
 
             SunLight.LightEnergy = Mathf.MoveToward(SunLight.LightEnergy, targetEnergy, (dt > 0 ? dt : 1f) * 0.5f);
             SunLight.LightColor = SunLight.LightColor.Lerp(targetColor, (dt > 0 ? dt : 1f) * 0.5f);
+
+            // Overcast skies and storms eat into the daylight the sun would give.
+            float weatherFactor = WeatherSystem.Instance?.DaylightFactor ?? 1f;
+            if (!Mathf.IsEqualApprox(weatherFactor, 1f))
+            {
+                SunLight.LightEnergy *= weatherFactor;
+                // Rain and fog desaturate the light toward a flat grey.
+                if (CurrentWeather is WeatherState.Rain or WeatherState.Storm)
+                    SunLight.LightColor = SunLight.LightColor.Lerp(new Color(0.7f, 0.75f, 0.8f), 0.4f);
+                else if (CurrentWeather == WeatherState.Fog)
+                    SunLight.LightColor = SunLight.LightColor.Lerp(new Color(0.85f, 0.85f, 0.82f), 0.3f);
+            }
         }
 
         // Adjust ambient energy if WorldEnvironment is available
         if (EnvironmentNode?.Environment != null)
         {
-            float targetAmbient = CurrentPhase switch
+            float weatherFactor = WeatherSystem.Instance?.DaylightFactor ?? 1f;
+            float targetAmbient = (CurrentPhase switch
             {
                 DayPhase.Day => 0.15f,
                 DayPhase.Dawn => 0.08f,
                 DayPhase.Dusk => 0.06f,
                 _ => 0.03f
-            };
+            }) * Mathf.Lerp(0.6f, 1f, weatherFactor);
             EnvironmentNode.Environment.AmbientLightEnergy = Mathf.MoveToward(
                 EnvironmentNode.Environment.AmbientLightEnergy, targetAmbient, (dt > 0 ? dt : 1f) * 0.2f);
         }

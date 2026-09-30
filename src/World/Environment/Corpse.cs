@@ -259,18 +259,26 @@ public partial class Corpse : StaticBody3D
 
     private void ApplyMiasmaDamage(float dt)
     {
+        // Rain and storms wash miasma out of the air, reducing both damage and
+        // the effective radius of the cloud.
+        float suppression = WeatherSystem.Instance?.MiasmaSuppression ?? 0f;
+        if (suppression >= 1f) return;
+
+        float effectiveRadius = MiasmaRadius * (1f - suppression * 0.5f);
+        float damagePerSecond = MiasmaDamagePerSecond * (1f - suppression);
+
         var players = GetTree().GetNodesInGroup("player");
         foreach (var p in players)
         {
             if (p is Node3D playerNode)
             {
                 float dist = GlobalPosition.DistanceTo(playerNode.GlobalPosition);
-                if (dist <= MiasmaRadius)
+                if (dist <= effectiveRadius)
                 {
                     var health = playerNode.GetNodeOrNull<HealthComponent>("HealthComponent");
                     if (health != null && health.IsAlive)
                     {
-                        health.TakeDamage(MiasmaDamagePerSecond * dt, DamageType.Toxic, this);
+                        health.TakeDamage(damagePerSecond * dt, DamageType.Toxic, this);
                     }
                 }
             }
