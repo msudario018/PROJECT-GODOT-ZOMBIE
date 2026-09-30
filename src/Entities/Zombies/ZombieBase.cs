@@ -60,6 +60,7 @@ public partial class ZombieBase : CharacterBody3D
     private StateMachine? _stateMachine;
     private NavigationAgent3D? _navAgent;
     private Node3D? _mesh;
+    private CharacterVisual? _visual;
 
     public HealthComponent Health => _health ??= GetNode<HealthComponent>("HealthComponent");
     public SensorySystem Sensory => _sensory ??= GetNode<SensorySystem>("SensorySystem");
@@ -73,7 +74,7 @@ public partial class ZombieBase : CharacterBody3D
 
     public StateMachine StateMachine => _stateMachine ??= GetNode<StateMachine>("StateMachine");
     public NavigationAgent3D NavAgent => _navAgent ??= GetNode<NavigationAgent3D>("NavigationAgent3D");
-    public Node3D? Mesh => _mesh ??= GetNodeOrNull<Node3D>("Mesh");
+    public Node3D? Mesh => _mesh ??= _visual?.PrimaryMesh ?? GetNodeOrNull<Node3D>("Mesh");
 
     // Runtime state
     public bool IsDead => Health != null && !Health.IsAlive;
@@ -94,6 +95,11 @@ public partial class ZombieBase : CharacterBody3D
         Health.Died += OnDied;
         Health.DamageTaken += OnDamageTaken;
 
+        // Visual pivot: rotation, hit flash and model swapping live here so the
+        // collision capsule never has to move.
+        _visual = GetNodeOrNull<CharacterVisual>("CharacterVisual");
+        _visual?.CacheMeshes();
+
         // Snapshot the authored stats; the difficulty preset is applied on read
         // (EffectiveMoveSpeed / EffectiveAttackDamage) so it can change mid-run.
         BaseMoveSpeed = MoveSpeed;
@@ -102,6 +108,9 @@ public partial class ZombieBase : CharacterBody3D
         AddToGroup("zombies");
         SharedSpatialGrid.UpdateEntity(this, GlobalPosition);
     }
+
+    /// <summary>Visual pivot for this zombie (null in scenes not yet migrated).</summary>
+    public CharacterVisual? Visual => _visual;
 
     public override void _ExitTree()
     {
@@ -240,7 +249,15 @@ public partial class ZombieBase : CharacterBody3D
 
     private void PlayHitFlash()
     {
-        // Visual feedback on hit
+        // The CharacterVisual owns the flash (it tints every mesh, model or
+        // primitive) and restores the original materials afterwards.
+        if (_visual != null)
+        {
+            _visual.FlashHit();
+            return;
+        }
+
+        // Legacy path for scenes without a visual pivot.
         if (Mesh is MeshInstance3D meshInstance && meshInstance.GetActiveMaterial(0) is StandardMaterial3D mat)
         {
             var tween = CreateTween();

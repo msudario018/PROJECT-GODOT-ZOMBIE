@@ -16,3 +16,4 @@ obj/
 selftest.log
 arena.log
 
+assets/textures/*.import

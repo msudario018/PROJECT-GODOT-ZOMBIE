@@ -59,10 +59,69 @@ public partial class PlayerCombat : Node3D
 
         InitializeWeapons();
         CreateSwingVisual();
+        AttachWeaponMesh();
 
         EmitSignal(SignalName.WeaponChanged, CurrentWeapon.WeaponName);
         EmitSignal(SignalName.AmmoChanged, CurrentMag, CurrentReserve);
     }
+
+    // ── Weapon visuals ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Put a small mesh for the equipped weapon in the player's right-hand
+    /// socket. Attached meshes are cosmetic: the raycast still starts at the
+    /// muzzle in world space, so this only affects how the gun looks.
+    /// </summary>
+    private void AttachWeaponMesh()
+    {
+        var visual = _player?.Visual;
+        if (visual == null || !visual.RightHandSocketVisible) return;
+
+        var mesh = new MeshInstance3D
+        {
+            Mesh = BuildWeaponMesh(CurrentWeapon),
+            MaterialOverride = BuildWeaponMaterial(CurrentWeapon),
+        };
+
+        // Pistols and shotguns point down -Z, the crowbar lies along +X.
+        mesh.RotationDegrees = CurrentWeapon.IsRanged
+            ? new Vector3(0f, 0f, 0f)
+            : new Vector3(0f, 0f, -20f);
+
+        visual.AttachWeapon(mesh);
+
+        // Melee is held two-handed, so it rides in the offhand socket.
+        if (!CurrentWeapon.IsRanged && visual.LeftHandSocketVisible)
+        {
+            visual.AttachWeapon(new MeshInstance3D
+            {
+                Mesh = BuildWeaponMesh(CurrentWeapon),
+                MaterialOverride = BuildWeaponMaterial(CurrentWeapon),
+            }, leftHanded: true);
+        }
+    }
+
+    private static Mesh BuildWeaponMesh(WeaponData weapon) => weapon.WeaponId switch
+    {
+        "pistol_9mm" => new BoxMesh { Size = new Vector3(0.08f, 0.12f, 0.32f) },
+        "shotgun_12g" => new BoxMesh { Size = new Vector3(0.09f, 0.11f, 0.78f) },
+        _ => new BoxMesh { Size = new Vector3(0.06f, 0.06f, 0.75f) },   // crowbar
+    };
+
+    private static StandardMaterial3D BuildWeaponMaterial(WeaponData weapon) => weapon.WeaponId switch
+    {
+        "pistol_9mm" => WeaponMaterial(new Color(0.15f, 0.15f, 0.17f), 0.4f, 0.8f),
+        "shotgun_12g" => WeaponMaterial(new Color(0.32f, 0.20f, 0.12f), 0.6f, 0.1f),
+        _ => WeaponMaterial(new Color(0.45f, 0.45f, 0.48f), 0.5f, 0.7f),
+    };
+
+    private static StandardMaterial3D WeaponMaterial(Color albedo, float roughness, float metallic)
+        => new()
+        {
+            AlbedoColor = albedo,
+            Roughness = roughness,
+            Metallic = metallic,
+        };
 
     private void InitializeWeapons()
     {
@@ -185,6 +244,7 @@ public partial class PlayerCombat : Node3D
 
         _currentWeaponIndex = index;
         _attackCooldownTimer = 0.2f;
+        AttachWeaponMesh();
 
         EmitSignal(SignalName.WeaponChanged, CurrentWeapon.WeaponName);
         EmitSignal(SignalName.AmmoChanged, CurrentMag, CurrentReserve);

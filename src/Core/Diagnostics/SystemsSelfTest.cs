@@ -83,6 +83,7 @@ public partial class SystemsSelfTest : Node3D
         TestStage8ZombieRoster();
         TestStage8Perimeter();
         TestStage9AimingGeometry();
+        TestStage9VisualPipeline();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -1442,6 +1443,87 @@ public partial class SystemsSelfTest : Node3D
         ScentComponent.ClearWorldScent();
         bleeder.QueueFree();
         trackerRoot.QueueFree();
+    }
+
+    // ── Stage 9: visual pipeline ─────────────────────────────────────
+
+    private void TestStage9VisualPipeline()
+    {
+        GD.Print("── Stage 9: Visual Pipeline ──");
+
+        // ── PBR material resources ─────────────────────────────────
+        var materialNames = new[] { "ground_asphalt", "wall_wood", "wall_chainlink", "barricade_concrete", "trim_metal" };
+        foreach (var name in materialNames)
+        {
+            string path = $"res://resources/materials/{name}.tres";
+            var material = GD.Load<StandardMaterial3D>(path);
+
+            Check($"{name} loads as a PBR material", material != null, path);
+            if (material == null) continue;
+
+            Check($"{name} has albedo, roughness and normal maps",
+                material.AlbedoTexture != null && material.RoughnessTexture != null && material.NormalTexture != null);
+            Check($"{name} is uv-tiled", material.Uv1Scale.X > 1f, $"(uv {material.Uv1Scale.X:F0})");
+        }
+
+        var chainlink = GD.Load<StandardMaterial3D>("res://resources/materials/wall_chainlink.tres");
+        if (chainlink != null)
+        {
+            // Chain link is the one material that must punch holes.
+            Check("chain link uses an alpha cutout, not blending",
+                chainlink.Transparency == BaseMaterial3D.TransparencyEnum.AlphaScissor
+                && chainlink.AlphaScissorThreshold > 0f,
+                $"({chainlink.Transparency})");
+            Check("chain link is metallic", chainlink.Metallic > 0.5f, $"(metallic {chainlink.Metallic:F2})");
+        }
+
+        var metal = GD.Load<StandardMaterial3D>("res://resources/materials/trim_metal.tres");
+        Check("metal trim is smooth and metallic",
+            metal != null && metal.Metallic > 0.5f && metal.Roughness < 0.6f,
+            metal != null ? $"(metallic {metal.Metallic:F2}, rough {metal.Roughness:F2})" : "(missing)");
+
+        var ground = GD.Load<StandardMaterial3D>("res://resources/materials/ground_asphalt.tres");
+        Check("the ground is rough and non-metallic",
+            ground != null && ground.Roughness > 0.7f && ground.Metallic < 0.2f,
+            ground != null ? $"(rough {ground.Roughness:F2})" : "(missing)");
+
+        // ── CharacterVisual hierarchy ──────────────────────────────
+        var host = new Node3D { Name = "VisualHost" };
+        AddChild(host);
+
+        var visual = new CharacterVisual { Name = "CharacterVisual" };
+        host.AddChild(visual);
+
+        // No Visual children authored: the component must build them.
+        Check("the component creates the Visual pivot", visual.Pivot != null);
+        Check("the component creates a model slot", visual.ModelSlot != null);
+        Check("the component creates a primitive fallback", visual.Fallback != null);
+        Check("the component creates both hand sockets",
+            visual.RightHandSocket != null && visual.LeftHandSocket != null
+            && visual.RightHandSocketVisible && visual.LeftHandSocketVisible);
+        Check("the sockets are offset to either side",
+            visual.RightHandSocket != null && visual.LeftHandSocket != null
+            && visual.RightHandSocket.Position.X > 0f && visual.LeftHandSocket.Position.X < 0f,
+            $"(right {visual.RightHandSocket?.Position.X}, left {visual.LeftHandSocket?.Position.X})");
+        visual.BuildHierarchy();
+        Check("building the hierarchy twice does not duplicate it",
+            visual.Pivot != null && visual.Pivot.GetChildCount() == 4,
+            $"({visual.Pivot?.GetChildCount()} children)");
+
+        // ── Hit flash ─────────────────────────────────────────────
+        var body = new MeshInstance3D { Name = "Body" };
+        body.MaterialOverride = new StandardMaterial3D { AlbedoColor = new Color(0.2f, 0.8f, 0.3f) };
+        visual.Fallback!.AddChild(body);
+        visual.CacheMeshes();
+
+        Check("the visual caches its meshes", visual.Meshes.Count == 1, $"({visual.Meshes.Count})");
+        Check("the primary mesh resolves", visual.PrimaryMesh != null);
+
+        Material before = body.MaterialOverride;
+        visual.FlashHit();
+        Check("a hit flash overrides the material",
+            visual.IsFlashing && body.MaterialOverride != before
+            && body.MaterialOverride is StandardMaterial3D { ShadingMode: BaseMaterial3D.ShadingModeEnum.Unshaded });
     }
 
     // ── Stage 9: weapon aiming geometry ─────────────────────────────

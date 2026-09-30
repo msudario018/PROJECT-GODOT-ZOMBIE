@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://src/Entities/Player/PlayerController.cs" id="1_controller"]
 [ext_resource type="Script" path="res://src/Core/Components/HealthComponent.cs" id="2_health"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://src/Core/Components/InventoryComponent.cs" id="7_inv"]
 [ext_resource type="Script" path="res://src/Entities/Player/PlayerStats.cs" id="8_stats"]
 [ext_resource type="Script" path="res://src/Systems/Crafting/CraftingSystem.cs" id="9_craft"]
+[ext_resource type="Script" path="res://src/Core/Components/CharacterVisual.cs" id="10_visual"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.4
@@ -23,6 +24,16 @@ albedo_color = Color(0.18, 0.55, 0.34, 1)
 roughness = 0.6
 metallic = 0.1
 
+[sub_resource type="BoxMesh" id="BoxMesh_eyes"]
+size = Vector3(0.26, 0.12, 0.15)
+
+[sub_resource type="StandardMaterial3D" id="Material_eyes"]
+albedo_color = Color(0.95, 0.95, 0.9, 1)
+emission_enabled = true
+emission = Color(0.8, 0.9, 1, 1)
+emission_energy_multiplier = 0.8
+roughness = 0.4
+
 [node name="Player" type="CharacterBody3D"]
 collision_layer = 2
 collision_mask = 1
@@ -32,10 +43,30 @@ script = ExtResource("1_controller")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 shape = SubResource("CapsuleShape3D_player")
 
-[node name="Mesh" type="MeshInstance3D" parent="."]
+[node name="CharacterVisual" type="Node3D" parent="."]
+script = ExtResource("10_visual")
+
+[node name="Visual" type="Node3D" parent="CharacterVisual"]
+
+[node name="ModelSlot" type="Node3D" parent="CharacterVisual/Visual"]
+
+[node name="PrimitiveFallback" type="Node3D" parent="CharacterVisual/Visual"]
+
+[node name="Body" type="MeshInstance3D" parent="CharacterVisual/Visual/PrimitiveFallback"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 mesh = SubResource("CapsuleMesh_player")
 surface_material_override/0 = SubResource("Material_player")
+
+[node name="Eyes" type="MeshInstance3D" parent="CharacterVisual/Visual/PrimitiveFallback"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.45, -0.28)
+mesh = SubResource("BoxMesh_eyes")
+surface_material_override/0 = SubResource("Material_eyes")
+
+[node name="RightHandSocket" type="Marker3D" parent="CharacterVisual/Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 1.05, -0.12)
+
+[node name="LeftHandSocket" type="Marker3D" parent="CharacterVisual/Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.32, 1.05, -0.12)
 
 [node name="CameraPivot" type="Node3D" parent="."]
 

@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://src/Entities/Zombies/Archetypes/SprinterRunner.cs" id="1_sprinter"]
 [ext_resource type="Script" path="res://src/Core/Components/HealthComponent.cs" id="2_health"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieAttackState.cs" id="9_attack"]
 [ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieHurtState.cs" id="10_hurt"]
 [ext_resource type="Script" path="res://src/Entities/Zombies/ZombieAI/ZombieDeadState.cs" id="11_dead"]
+[ext_resource type="Script" path="res://src/Core/Components/CharacterVisual.cs" id="12_visual"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_sprinter"]
 radius = 0.35
@@ -39,17 +40,32 @@ script = ExtResource("1_sprinter")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
 shape = SubResource("CapsuleShape3D_sprinter")
 
-[node name="Mesh" type="Node3D" parent="."]
+[node name="CharacterVisual" type="Node3D" parent="."]
+script = ExtResource("12_visual")
 
-[node name="Body" type="MeshInstance3D" parent="Mesh"]
+[node name="Visual" type="Node3D" parent="CharacterVisual"]
+
+[node name="ModelSlot" type="Node3D" parent="CharacterVisual/Visual"]
+
+[node name="PrimitiveFallback" type="Node3D" parent="CharacterVisual/Visual"]
+
+[node name="Mesh" type="Node3D" parent="CharacterVisual/Visual/PrimitiveFallback"]
+
+[node name="Body" type="MeshInstance3D" parent="CharacterVisual/Visual/PrimitiveFallback/Mesh"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.85, 0)
 mesh = SubResource("CapsuleMesh_sprinter")
 surface_material_override/0 = SubResource("StandardMaterial3D_sprinter")
 
-[node name="Eyes" type="MeshInstance3D" parent="Mesh"]
+[node name="Eyes" type="MeshInstance3D" parent="CharacterVisual/Visual/PrimitiveFallback/Mesh"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, -0.3)
 mesh = SubResource("BoxMesh_eye")
 surface_material_override/0 = SubResource("StandardMaterial3D_eye")
+
+[node name="RightHandSocket" type="Marker3D" parent="CharacterVisual/Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.3, 0.95, -0.1)
+
+[node name="LeftHandSocket" type="Marker3D" parent="CharacterVisual/Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.3, 0.95, -0.1)
 
 [node name="HealthComponent" type="Node" parent="."]
 script = ExtResource("2_health")

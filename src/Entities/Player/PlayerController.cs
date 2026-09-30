@@ -1,5 +1,6 @@
 using Godot;
 using ZombieApocalypse.Core.Autoloads;
+using ZombieApocalypse.Core.Components;
 using ZombieApocalypse.Core.Utilities;
 
 namespace ZombieApocalypse.Entities.Player;
@@ -39,6 +40,10 @@ public partial class PlayerController : CharacterBody3D
     private Node3D _cameraPivot = null!;
     private Camera3D _camera = null!;
     private Node3D _mesh = null!;
+    private CharacterVisual? _visual;
+
+    /// <summary>Visual pivot (rotation, hit flash, model swapping, weapon sockets).</summary>
+    public CharacterVisual? Visual => _visual;
     private ZombieApocalypse.Core.Components.AudioEmitterComponent? _audioEmitter;
     private PlayerStats? _playerStats;
     private ZombieApocalypse.Core.Components.InventoryComponent? _inventory;
@@ -70,7 +75,8 @@ public partial class PlayerController : CharacterBody3D
 
         _cameraPivot = GetNode<Node3D>("CameraPivot");
         _camera = _cameraPivot.GetNode<Camera3D>("Camera3D");
-        _mesh = GetNode<Node3D>("Mesh");
+        _mesh = GetNodeOrNull<Node3D>("Mesh");               // legacy scenes
+        _visual = GetNodeOrNull<CharacterVisual>("CharacterVisual");
         _audioEmitter = GetNodeOrNull<ZombieApocalypse.Core.Components.AudioEmitterComponent>("AudioEmitterComponent");
         _playerStats = GetNodeOrNull<PlayerStats>("PlayerStats");
         _inventory = GetNodeOrNull<ZombieApocalypse.Core.Components.InventoryComponent>("InventoryComponent");
@@ -302,6 +308,17 @@ public partial class PlayerController : CharacterBody3D
             return;
 
         _lastFacingDirection = horizontal.Normalized();
+
+        // The Visual pivot owns rotation now; fall back to the legacy mesh node
+        // for scenes that have not been migrated yet.
+        if (_visual != null && _visual.Pivot != null)
+        {
+            _visual.FaceWorldDirection(_lastFacingDirection, RotationSmoothing, (float)GetPhysicsProcessDeltaTime());
+            return;
+        }
+
+        if (_mesh == null) return;
+
         float targetAngle = Mathf.Atan2(_lastFacingDirection.X, _lastFacingDirection.Z);
         float currentAngle = _mesh.Rotation.Y;
         _mesh.Rotation = new Vector3(0f, Mathf.LerpAngle(currentAngle, targetAngle, RotationSmoothing), 0f);
