@@ -203,6 +203,32 @@ public partial class InventoryComponent : Node
         }
     }
 
+    /// <summary>
+    /// Replace the entire inventory with the given stacks (save/load restore).
+    /// Slot layout is rebuilt through the normal stacking rules, so weight and
+    /// signals stay consistent. Items that fail to fit are dropped silently.
+    /// </summary>
+    public void RestoreContents(IEnumerable<(ItemData item, int quantity)> stacks)
+    {
+        ClearContents();
+
+        foreach (var (item, quantity) in stacks)
+        {
+            if (item == null || quantity <= 0) continue;
+            TryAdd(item, quantity);
+        }
+    }
+
+    /// <summary>Empty every slot and reset carried weight to zero.</summary>
+    public void ClearContents()
+    {
+        EnsureInitialized();
+        for (int i = 0; i < SlotCount; i++)
+            _slots[i].Clear();
+        CurrentWeightKg = 0f;
+        EmitSignal(SignalName.InventoryChanged);
+    }
+
     // ── Inner class ──────────────────────────────────────────────────
 
     public class ItemStack

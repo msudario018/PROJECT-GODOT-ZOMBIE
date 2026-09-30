@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 using ZombieApocalypse.Core.Data;
 
@@ -223,6 +224,86 @@ public partial class FogOfWarSystem : Node
         if (alpha < 0.1f) return VisibilityState.Visible;
         if (alpha < 0.9f) return VisibilityState.Explored;
         return VisibilityState.Hidden;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // Save / Load — explored cells are run-length encoded ("x,y:len;...")
+    // ════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Serialise every explored (non-hidden) cell in row-major order, run-length
+    /// encoded. A 50x50 grid collapses from thousands of entries to a short string.
+    /// </summary>
+    public string ExportExplored()
+    {
+        var runs = new System.Text.StringBuilder();
+        int runLength = 0;
+        int runStart = -1;
+
+        for (int y = 0; y < GridHeight; y++)
+        for (int x = 0; x < GridWidth; x++)
+        {
+            bool explored = _currentAlpha[x, y] < 0.9f;
+
+            if (explored)
+            {
+                if (runLength == 0) runStart = y * GridWidth + x;
+                runLength++;
+                continue;
+            }
+
+            if (runLength > 0)
+            {
+                if (runs.Length > 0) runs.Append(';');
+                runs.Append($"{runStart / GridWidth},{runStart % GridWidth}:{runLength}");
+                runLength = 0;
+            }
+        }
+
+        if (runLength > 0)
+        {
+            if (runs.Length > 0) runs.Append(';');
+            runs.Append($"{runStart / GridWidth},{runStart % GridWidth}:{runLength}");
+        }
+
+        return runs.ToString();
+    }
+
+    /// <summary>Restore explored cells from <see cref="ExportExplored"/> output.</summary>
+    public int ImportExplored(string encoded)
+    {
+        if (string.IsNullOrEmpty(encoded)) return 0;
+
+        int revealed = 0;
+        foreach (var run in encoded.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = run.Split(':');
+            if (parts.Length != 2) continue;
+
+            var coords = parts[0].Split(',');
+            if (coords.Length != 2) continue;
+            if (!int.TryParse(coords[0], out int startX)) continue;
+            if (!int.TryParse(coords[1], out int startY)) continue;
+            if (!int.TryParse(parts[1], out int length)) continue;
+
+            for (int i = 0; i < length; i++)
+            {
+                int index = i + startY * GridWidth + startX;
+                int x = index % GridWidth;
+                int y = index / GridWidth;
+                if (!IsValidCell(new Vector2I(x, y))) continue;
+
+                _currentAlpha[x, y] = ExploredAlpha;
+                _targetAlpha[x, y] = ExploredAlpha;
+                revealed++;
+            }
+        }
+
+        _dirty = true;
+        if (FogTexture != null && _fogImage != null)
+            FogTexture.Update(_fogImage);
+
+        return revealed;
     }
 
     // ════════════════════════════════════════════════════════════════

@@ -24,8 +24,30 @@ public partial class AirdropEvent : Node3D
 
     public override void _Ready()
     {
+        AddToGroup("airdrop_events");
         if (AutoSpawnOnReady)
             TriggerDrop();
+    }
+
+    /// <summary>
+    /// Re-create the event's world state after loading a save: either spawn the
+    /// cache (and its contesting squad) again, or clear a cache that never
+    /// dropped in the saved run.
+    /// </summary>
+    public void RestoreState(bool hasDropped, Vector3 dropPosition)
+    {
+        if (hasDropped)
+        {
+            DropPosition = dropPosition;
+            if (!HasDropped)
+                TriggerDrop();
+        }
+        else if (HasDropped)
+        {
+            Cache?.QueueFree();
+            Cache = null;
+            HasDropped = false;
+        }
     }
 
     /// <summary>Drop the cache, attract a squad, and announce the event.</summary>

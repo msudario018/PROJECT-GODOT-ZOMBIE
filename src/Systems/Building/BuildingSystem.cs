@@ -152,7 +152,17 @@ public partial class BuildingSystem : Node3D
 
     private void PlaceCurrentStructure()
     {
-        PackedScene? sceneToPlace = ActiveBuildType switch
+        SpawnStructure(ActiveBuildType, _currentSnappedPosition, CurrentRotationDegrees);
+    }
+
+    /// <summary>
+    /// Instantiate a built structure at a transform. Shared by mouse placement
+    /// and by save/load restore, so loaded structures are identical to built
+    /// ones (including the "player_structures" tag used for cleanup).
+    /// </summary>
+    public Node3D? SpawnStructure(int buildType, Vector3 position, float yawDegrees)
+    {
+        PackedScene? sceneToPlace = buildType switch
         {
             1 => ScrapWoodFenceScene,
             2 => ChainLinkWallScene,
@@ -162,15 +172,32 @@ public partial class BuildingSystem : Node3D
 
         if (sceneToPlace == null)
         {
-            GD.PrintErr($"[BuildingSystem] Scene for type {ActiveBuildType} is null!");
-            return;
+            GD.PrintErr($"[BuildingSystem] Scene for type {buildType} is null!");
+            return null;
         }
 
         var instance = sceneToPlace.Instantiate<Node3D>();
-        instance.Position = _currentSnappedPosition;
-        instance.RotationDegrees = new Vector3(0f, CurrentRotationDegrees, 0f);
+        instance.Position = position;
+        instance.RotationDegrees = new Vector3(0f, yawDegrees, 0f);
+        instance.AddToGroup("player_structures");
 
         GetTree().CurrentScene.AddChild(instance);
-        GD.Print($"[BuildingSystem] Successfully placed structure at {_currentSnappedPosition}.");
+        GD.Print($"[BuildingSystem] Structure (type {buildType}) placed at {position}.");
+        return instance;
+    }
+
+    /// <summary>Remove every player-built structure (used before restoring a save).</summary>
+    public int ClearPlayerStructures()
+    {
+        int removed = 0;
+        foreach (var node in GetTree().GetNodesInGroup("player_structures"))
+        {
+            if (node is Node structure && GodotObject.IsInstanceValid(structure))
+            {
+                structure.QueueFree();
+                removed++;
+            }
+        }
+        return removed;
     }
 }

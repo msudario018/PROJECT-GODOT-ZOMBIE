@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 using ZombieApocalypse.Core.Data;
 
 namespace ZombieApocalypse.Core.Data;
@@ -135,4 +136,25 @@ public partial class ItemData : Resource
         Category = ItemCategory.Weapon, MaxStack = 4, WeightKg = 0.8f,
         IconColor = new Color(1f, 0.55f, 0.15f)
     };
+
+    // ── Registry ─────────────────────────────────────────────────────────────
+    // Built lazily so the list is independent of static field declaration order.
+    private static List<ItemData>? _all;
+
+    /// <summary>Every built-in item definition (used to resolve save-file item ids).</summary>
+    public static IReadOnlyList<ItemData> All => _all ??= new List<ItemData>
+    {
+        _bandage, _medKit, _foodCan, _waterBottle, _scrap, _cloth, _woodPlank,
+        _nails, _rope, _ammo9mm, _ammo12g, _shovel, _fuelCan, _molotov
+    };
+
+    /// <summary>Look an item up by its <see cref="ItemId"/>. Returns null if unknown.</summary>
+    public static ItemData? Find(string itemId)
+    {
+        if (string.IsNullOrEmpty(itemId)) return null;
+        foreach (var item in All)
+            if (item.ItemId == itemId)
+                return item;
+        return null;
+    }
 }

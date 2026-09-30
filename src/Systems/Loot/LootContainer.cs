@@ -205,6 +205,36 @@ public partial class LootContainer : StaticBody3D
             _label.Visible = visible && !IsSearched;
     }
 
+    // ── Save / load support ──────────────────────────────────────────
+
+    /// <summary>Fixed manifest contents (stockpiles, airdrops, bandit caches).</summary>
+    public IReadOnlyList<LootEntry> Contents => _overrideTable ?? (IReadOnlyList<LootEntry>)System.Array.Empty<LootEntry>();
+
+    /// <summary>True when this container has a fixed manifest instead of a rolled table.</summary>
+    public bool HasFixedManifest => _overrideTable != null;
+
+    /// <summary>
+    /// Force the searched/emptied flag (save/load). Visuals are refreshed so a
+    /// restored container looks the part.
+    /// </summary>
+    public void SetSearchedState(bool searched)
+    {
+        IsSearched = searched;
+        IsSearching = false;
+        _searchTimer = 0f;
+
+        if (searched)
+        {
+            if (_mesh?.GetActiveMaterial(0) is StandardMaterial3D mat)
+                mat.AlbedoColor = new Color(0.35f, 0.35f, 0.35f);
+            if (_label != null)
+            {
+                _label.Text = $"{ContainerLabel} (Empty)";
+                _label.Modulate = new Color(0.5f, 0.5f, 0.5f);
+            }
+        }
+    }
+
     /// <summary>
     /// Force-complete a search instantly into any inventory. Used by survivor
     /// scavengers, bandit looters and the headless self-test. Returns true if

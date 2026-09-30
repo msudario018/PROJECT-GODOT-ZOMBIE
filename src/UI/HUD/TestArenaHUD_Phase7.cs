@@ -83,7 +83,18 @@ public partial class TestArenaHUD
         }
         if (controls != null)
             controls.Text += "\n[H] Spawn Raid | [J] Airdrop | [K] Cycle Survivor Task | [L] Spawn Survivor";
+
+        if (Core.Persistence.SaveManager.Instance != null)
+        {
+            Core.Persistence.SaveManager.Instance.GameSaved += OnGameSaved;
+            Core.Persistence.SaveManager.Instance.GameLoaded += OnGameLoaded;
+            Core.Persistence.SaveManager.Instance.SaveFailed += OnSaveFailed;
+        }
     }
+
+    private void OnGameSaved(string path) => _statusLabel.Text = $"Game saved → {path.GetFile()}";
+    private void OnGameLoaded(string path) => _statusLabel.Text = $"Game loaded ← {path.GetFile()}";
+    private void OnSaveFailed(string reason) => _statusLabel.Text = $"Save failed: {reason}";
 
     partial void UpdatePhase7UI(double delta)
     {

@@ -139,6 +139,16 @@ public partial class HealthComponent : Node
         EmitSignal(SignalName.HealthChanged, CurrentHealth, MaxHealth);
     }
 
+    /// <summary>
+    /// Set the current health directly, clamped to [0, MaxHealth]. Used when
+    /// loading a save so restoring never re-triggers damage or death signals.
+    /// </summary>
+    public void SetHealth(float value)
+    {
+        CurrentHealth = Mathf.Clamp(value, 0f, MaxHealth);
+        EmitSignal(SignalName.HealthChanged, CurrentHealth, MaxHealth);
+    }
+
     /// <summary>Instantly kill this entity (bypasses armor/resistance).</summary>
     public void Kill()
     {

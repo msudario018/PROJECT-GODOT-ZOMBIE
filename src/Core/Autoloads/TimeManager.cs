@@ -97,6 +97,15 @@ public partial class TimeManager : Node
         RecomputePhase(announce: false);
     }
 
+    /// <summary>Restore the clock to a saved day/hour (save/load).</summary>
+    public void RestoreState(int dayCount, float hour, bool isPaused)
+    {
+        DayCount = Mathf.Max(1, dayCount);
+        CurrentHour = Mathf.PosMod(hour, 24f);
+        IsTimePaused = isPaused;
+        RecomputePhase(announce: false);
+    }
+
     /// <summary>Deterministic clock advance for tests and save/load fast-forward.</summary>
     public void Advance(float hours)
     {

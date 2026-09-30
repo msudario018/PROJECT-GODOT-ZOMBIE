@@ -1,5 +1,6 @@
 using Godot;
 using ZombieApocalypse.Core.Data;
+using ZombieApocalypse.Core.Persistence;
 
 namespace ZombieApocalypse.Core.Autoloads;
 
@@ -41,6 +42,21 @@ public partial class GameManager : Node
             return;
         }
 
+        // Persistence shortcuts (handled by the SaveManager autoload)
+        if (@event.IsActionPressed("save_game"))
+        {
+            SaveManager.Instance?.SaveGame();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (@event.IsActionPressed("load_game"))
+        {
+            SaveManager.Instance?.LoadGame();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         // Restart from the death screen
         if (CurrentState == GameState.GameOver && @event.IsActionPressed("restart"))
         {
@@ -57,6 +73,7 @@ public partial class GameManager : Node
     {
         if (CurrentState == GameState.GameOver) return;
         SetState(GameState.GameOver);
+        SaveManager.Instance?.HandlePlayerDeath();
         GD.Print("[GameManager] PLAYER DIED — press [P] to restart.");
     }
 
@@ -121,6 +138,8 @@ public partial class GameManager : Node
         RegisterAction("inventory", Key.Tab);
         RegisterAction("map",       Key.M);
         RegisterAction("restart",   Key.P);
+        RegisterAction("save_game", Key.F5);
+        RegisterAction("load_game", Key.F9);
 
         // ── Mouse Attack & Action ──
         RegisterMouseAction("attack",                MouseButton.Left);

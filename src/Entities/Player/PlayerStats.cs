@@ -126,4 +126,17 @@ public partial class PlayerStats : Node
 
     /// <summary>Can the player sprint right now (not exhausted, stamina > 0)?</summary>
     public bool CanSprint() => !IsExhausted && Stamina > 0f;
+
+    /// <summary>
+    /// Restore the vitals bar directly (used by save/load). Clamped to 0-100 and
+    /// clears the exhausted flag so a loaded player can sprint again.
+    /// </summary>
+    public void Restore(float hunger, float thirst, float stamina)
+    {
+        Hunger = Mathf.Clamp(hunger, 0f, 100f);
+        Thirst = Mathf.Clamp(thirst, 0f, 100f);
+        Stamina = Mathf.Clamp(stamina, 0f, 100f);
+        IsExhausted = false;
+        EmitSignal(SignalName.StatsChanged, Hunger, Thirst, Stamina);
+    }
 }

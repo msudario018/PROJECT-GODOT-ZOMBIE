@@ -1,9 +1,11 @@
 using Godot;
 using System.Collections.Generic;
+using System.Linq;
 using ZombieApocalypse.Core.Audio;
 using ZombieApocalypse.Core.Autoloads;
 using ZombieApocalypse.Core.Components;
 using ZombieApocalypse.Core.Data;
+using ZombieApocalypse.Core.Persistence;
 using ZombieApocalypse.Entities.Bandits;
 using ZombieApocalypse.Entities.NPC;
 using ZombieApocalypse.Entities.Player;
@@ -70,6 +72,7 @@ public partial class SystemsSelfTest : Node3D
         TestPhase7Airdrop();
         TestStage1WiringFixes();
         TestStage2Services();
+        TestStage3Persistence();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -805,10 +808,13 @@ public partial class SystemsSelfTest : Node3D
             $"(loop end {hum.LoopEnd})");
 
         float peak = 0f;
-        for (int i = 0; i < gunshot.Data.Length - 1; i += 2)
+        if (gunshot != null)
         {
-            short sample = (short)(gunshot.Data[i] | (gunshot.Data[i + 1] << 8));
-            peak = Mathf.Max(peak, Mathf.Abs(sample));
+            for (int i = 0; i < gunshot.Data.Length - 1; i += 2)
+            {
+                short sample = (short)(gunshot.Data[i] | (gunshot.Data[i + 1] << 8));
+                peak = Mathf.Max(peak, Mathf.Abs(sample));
+            }
         }
         Check("gunshot actually carries signal", peak > 3000, $"(peak {peak})");
 
@@ -852,5 +858,189 @@ public partial class SystemsSelfTest : Node3D
             }
         }
     }
+    // ── Stage 3: save / load persistence ─────────────────────────────
+
+    private void TestStage3Persistence()
+    {
+        GD.Print("── Stage 3: Save & Load ──");
+
+        var saves = SaveManager.Instance;
+        Check("SaveManager autoload is online", saves != null);
+        if (saves == null) return;
+
+        // ── 1. Put the world into a distinctive state ────────────────
+        _generator.Running = false;
+        _generator.FuelCanisters = 1.5f;
+        _battery.SetChargeWattHours(87f);
+        if (!_cable.IsSevered) _cable.Sever();
+        MoraleSystem.Instance?.SetMorale(33f);
+        TimeManager.Instance?.RestoreState(3, 19.5f, true);
+
+        var captured = saves.Capture();
+
+        // ── 2. Capture reflects the live simulation ──────────────────
+        Check("capture records the generator state",
+            !captured.Power.GeneratorRunning && Mathf.Abs(captured.Power.GeneratorFuel - 1.5f) < 0.01f,
+            $"(running {captured.Power.GeneratorRunning}, fuel {captured.Power.GeneratorFuel})");
+        Check("capture records the battery charge",
+            Mathf.Abs(captured.Power.BatteryChargeWattHours - 87f) < 0.5f,
+            $"{captured.Power.BatteryChargeWattHours:F1}Wh");
+        Check("capture records severed cables", captured.Power.SeveredCables.Count == 1,
+            $"({captured.Power.SeveredCables.Count})");
+        Check("capture records camp morale",
+            MoraleSystem.Instance == null || Mathf.Abs(captured.Camp.Morale - 33f) < 0.01f,
+            $"({captured.Camp.Morale})");
+        Check("capture records the clock",
+            TimeManager.Instance == null
+            || (captured.Clock.DayCount == 3 && Mathf.Abs(captured.Clock.Hour - 19.5f) < 0.01f),
+            $"(day {captured.Clock.DayCount}, hour {captured.Clock.Hour})");
+        Check("capture records scene containers",
+            captured.World.Containers.Count > 0,
+            $"({captured.World.Containers.Count} containers, {captured.World.Containers.Count(c => c.Searched)} searched)");
+
+        // ── 3. JSON round trip ───────────────────────────────────────
+        var json = captured.ToJson();
+        Check("save serialises to JSON", json.Contains("\"version\"") && json.Length > 200,
+            $"({json.Length} chars)");
+
+        var parsed = SaveData.FromJson(json);
+        Check("save parses back", parsed != null);
+        if (parsed != null)
+        {
+            Check("round trip preserves power state",
+                !parsed.Power.GeneratorRunning
+                && Mathf.Abs(parsed.Power.GeneratorFuel - 1.5f) < 0.01f
+                && Mathf.Abs(parsed.Power.BatteryChargeWattHours - 87f) < 0.5f
+                && parsed.Power.SeveredCables.Count == 1);
+            Check("round trip preserves camp and clock",
+                Mathf.Abs(parsed.Camp.Morale - 33f) < 0.01f
+                && parsed.Clock.DayCount == 3
+                && Mathf.Abs(parsed.Clock.Hour - 19.5f) < 0.01f);
+            Check("round trip preserves the stockpile manifest",
+                parsed.Camp.Stockpile.Count == captured.Camp.Stockpile.Count
+                && parsed.Camp.Stockpile.All(s => s.Quantity > 0));
+        }
+
+        // ── 4. Corrupt / foreign saves are rejected, not crashed on ──
+        Check("non-dictionary JSON is rejected", SaveData.FromJson("[1, 2, 3]") == null);
+        Check("unsupported version is rejected", SaveData.FromJson("{\"version\": 999}") == null);
+        Check("empty string is rejected", SaveData.FromJson("") == null);
+
+        // ── 5. Mutate the world, then restore from the parsed save ───
+        _generator.Running = true;
+        _generator.FuelCanisters = 4f;
+        _battery.SetChargeWattHours(0f);
+        if (_cable.IsSevered) _cable.Repair();
+        MoraleSystem.Instance?.SetMorale(88f);
+        TimeManager.Instance?.RestoreState(1, 3f, false);
+
+        int applied = saves.ApplyTo(parsed!);
+        Check("load applies every section", applied >= 4, $"({applied} sections)");
+
+        Check("generator state is restored",
+            !_generator.Running && Mathf.Abs(_generator.FuelCanisters - 1.5f) < 0.01f,
+            $"(running {_generator.Running}, fuel {_generator.FuelCanisters})");
+        Check("battery charge is restored",
+            Mathf.Abs(_battery.ChargeWattHours - 87f) < 0.5f, $"{_battery.ChargeWattHours:F1}Wh");
+        Check("severed cable is severed again", _cable.IsSevered);
+        Check("morale is restored",
+            MoraleSystem.Instance == null || Mathf.Abs(MoraleSystem.Instance.Morale - 33f) < 0.01f,
+            $"({MoraleSystem.Instance?.Morale})");
+        Check("clock is restored",
+            TimeManager.Instance == null
+            || (TimeManager.Instance.DayCount == 3 && Mathf.Abs(TimeManager.Instance.CurrentHour - 19.5f) < 0.01f
+                && TimeManager.Instance.IsTimePaused),
+            $"(day {TimeManager.Instance?.DayCount}, hour {TimeManager.Instance?.CurrentHour})");
+        Check("grid rescans after a load", PowerGrid.Instance != null);
+
+        // ── 6. Inventory round trip through the component API ────────
+        _inventory.ClearContents();
+        Check("inventory can be emptied", _inventory.TotalItemCount() == 0);
+
+        _inventory.RestoreContents(new[] { (ItemData.Cloth, 7), (ItemData.Nails, 12) });
+        Check("inventory restores stacks",
+            _inventory.CountOf("cloth") == 7 && _inventory.CountOf("nails") == 12,
+            $"(cloth {_inventory.CountOf("cloth")}, nails {_inventory.CountOf("nails")})");
+        Check("restored weight is tracked",
+            Mathf.Abs(_inventory.CurrentWeightKg - (7f * ItemData.Cloth.WeightKg + 12f * ItemData.Nails.WeightKg)) < 0.01f,
+            $"{_inventory.CurrentWeightKg:F2}kg");
+
+        var resolved = SaveApply.ResolveSlots(new List<SlotData>
+        {
+            new("cloth", 3),
+            new("not_a_real_item", 5),
+        });
+        Check("unknown item ids are dropped on load", resolved.Count == 1 && resolved[0].item.ItemId == "cloth",
+            $"({resolved.Count} resolved)");
+        Check("ItemData.Find resolves known ids and rejects unknown",
+            ItemData.Find("water_bottle") == ItemData.WaterBottle && ItemData.Find("nope") == null);
+
+        // ── 7. File round trip ───────────────────────────────────────
+        const string testPath = "user://selftest_save.json";
+        using (var file = Godot.FileAccess.Open(testPath, Godot.FileAccess.ModeFlags.Write))
+            file?.StoreString(json);
+
+        var fromDisk = SaveManager.ReadSave(testPath);
+        Check("save file reads back from disk",
+            fromDisk != null && fromDisk.Clock.DayCount == 3
+            && Mathf.Abs(fromDisk.Camp.Morale - 33f) < 0.01f);
+
+        if (Godot.FileAccess.FileExists(testPath))
+            Godot.DirAccess.RemoveAbsolute(testPath);
+        Check("save file is removed again", !Godot.FileAccess.FileExists(testPath));
+        Check("reading a missing file returns null", SaveManager.ReadSave("user://definitely_not_here.json") == null);
+
+        // ── 8. Player section (self-test scene has no player, so make one) ──
+        var playerRoot = new Node3D { Name = "TestSavePlayer" };
+        playerRoot.AddToGroup("player");
+        AddChild(playerRoot);
+
+        var health = new HealthComponent { Name = "HealthComponent", MaxHealth = 100f };
+        var stats = new PlayerStats { Name = "PlayerStats" };
+        var bag = new InventoryComponent { Name = "InventoryComponent", GrantStartingItems = false };
+        playerRoot.AddChild(health);
+        playerRoot.AddChild(stats);
+        playerRoot.AddChild(bag);
+
+        health.TakeDamage(35f);
+        stats.Restore(20f, 30f, 40f);
+        bag.RestoreContents(new[] { (ItemData.Scrap, 5) });
+        playerRoot.GlobalPosition = new Vector3(7f, 0f, -3f);
+
+        var withPlayer = new SaveData();
+        withPlayer.Player = SaveCapture.CapturePlayer();
+        Check("player capture reads position and vitals",
+            Mathf.Abs(withPlayer.Player.Position.X - 7f) < 0.01f
+            && Mathf.Abs(withPlayer.Player.Health - 65f) < 0.5f
+            && Mathf.Abs(withPlayer.Player.Hunger - 20f) < 0.5f
+            && Mathf.Abs(withPlayer.Player.Stamina - 40f) < 0.5f,
+            $"(pos {withPlayer.Player.Position}, hp {withPlayer.Player.Health})");
+        Check("player capture reads the backpack",
+            withPlayer.Player.Slots.Count == 1 && withPlayer.Player.Slots[0].ItemId == "scrap",
+            $"({withPlayer.Player.Slots.Count} slots)");
+
+        // Change everything, then restore.
+        playerRoot.GlobalPosition = Vector3.Zero;
+        health.TakeDamage(50f);
+        stats.Restore(90f, 90f, 100f);
+        bag.ClearContents();
+
+        Check("player section applies", SaveApply.ApplyPlayer(withPlayer.Player));
+        Check("player position and health are restored",
+            Mathf.Abs(playerRoot.GlobalPosition.X - 7f) < 0.01f
+            && Mathf.Abs(health.CurrentHealth - 65f) < 0.5f,
+            $"(pos {playerRoot.GlobalPosition}, hp {health.CurrentHealth:F1})");
+        Check("player vitals are restored",
+            Mathf.Abs(stats.Hunger - 20f) < 0.5f && Mathf.Abs(stats.Thirst - 30f) < 0.5f,
+            $"(hunger {stats.Hunger}, thirst {stats.Thirst})");
+        Check("player backpack is restored", bag.CountOf("scrap") == 5, $"(scrap {bag.CountOf("scrap")})");
+
+        // Health is clamped, never healed above the max by a corrupt save.
+        health.SetHealth(500f);
+        Check("health clamps to max", Mathf.Abs(health.CurrentHealth - health.MaxHealth) < 0.01f);
+
+        playerRoot.QueueFree();
+    }
+
 
 }

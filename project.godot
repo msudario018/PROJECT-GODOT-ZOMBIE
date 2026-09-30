@@ -22,6 +22,7 @@ Events="*res://src/Core/Autoloads/EventBus.cs"
 Game="*res://src/Core/Autoloads/GameManager.cs"
 TimeManager="*res://src/Core/Autoloads/TimeManager.cs"
 Audio="*res://src/Core/Autoloads/AudioManager.cs"
+Save="*res://src/Core/Persistence/SaveManager.cs"
 
 [display]
 

@@ -71,6 +71,22 @@ public partial class CorpseManager : Node3D
         return corpse;
     }
 
+    /// <summary>Free every corpse in the world (used before restoring a save).</summary>
+    public int ClearCorpses()
+    {
+        int cleared = 0;
+        foreach (var corpse in _activeCorpses)
+        {
+            if (GodotObject.IsInstanceValid(corpse))
+            {
+                corpse.QueueFree();
+                cleared++;
+            }
+        }
+        _activeCorpses.Clear();
+        return cleared;
+    }
+
     public int GetActiveMiasmaCount()
     {
         int count = 0;

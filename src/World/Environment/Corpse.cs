@@ -221,6 +221,36 @@ public partial class Corpse : StaticBody3D
         }
     }
 
+    /// <summary>
+    /// Re-create a saved corpse's state (save/load): how far it has rotted and
+    /// whether it was already looted or buried. Miasma emission is re-derived
+    /// from the stage so a restored rotting corpse still poisons the area.
+    /// </summary>
+    public void RestoreState(int stage, float ageSeconds, bool searched, bool buried)
+    {
+        CurrentStage = System.Enum.IsDefined(typeof(CorpseStage), stage)
+            ? (CorpseStage)stage
+            : CorpseStage.Fresh;
+        AgeSeconds = Mathf.Max(0f, ageSeconds);
+        IsSearched = searched;
+        IsBuried = buried;
+        IsBurning = false;
+        _burnTimer = 0f;
+
+        if (_bodyMesh != null)
+        {
+            _bodyMesh.Scale = CurrentStage switch
+            {
+                CorpseStage.Bloated => new Vector3(1.25f, 1.25f, 1.05f),
+                CorpseStage.Skeleton => new Vector3(0.6f, 0.6f, 0.8f),
+                _ => Vector3.One,
+            };
+        }
+
+        SetMiasmaActive(CurrentStage == CorpseStage.RottingMiasma && !buried);
+        UpdateLifecycleStage(0f);
+    }
+
     private void SetMiasmaActive(bool active)
     {
         if (_miasmaCloudMesh != null) _miasmaCloudMesh.Visible = active;
