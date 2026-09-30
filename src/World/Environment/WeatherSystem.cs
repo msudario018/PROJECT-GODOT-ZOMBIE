@@ -110,10 +110,13 @@ public partial class WeatherSystem : Node
     public override void _Ready()
     {
         Instance = this;
+        BuildVisuals();
 
         // Align to whatever the clock already knows (survives scene reloads).
         if (TimeManager.Instance != null)
             EvaluateForDay(TimeManager.Instance.DayCount, announce: false);
+        else
+            ApplyVisuals(CurrentWeather);
 
         GD.Print($"[WeatherSystem] Online — {CurrentSeason}, {CurrentWeather} " +
                  $"(daylight ×{DaylightFactor:F2}, thirst ×{ThirstDrainMultiplier:F2}).");
@@ -174,6 +177,8 @@ public partial class WeatherSystem : Node
             GD.Print($"[WeatherSystem] Weather → {CurrentWeather} " +
                      $"(daylight ×{DaylightFactor:F2}, miasma suppression {MiasmaSuppression:P0}).");
         }
+
+        ApplyVisuals(CurrentWeather);
     }
 
     private WeatherState RollWeather(Season season)
@@ -194,4 +199,121 @@ public partial class WeatherSystem : Node
     public string GetSummaryLine()
         => $"{CurrentSeason} day {DayOfSeason} · {CurrentWeather} · " +
            $"daylight {DaylightFactor:P0} · thirst ×{ThirstDrainMultiplier:F2}";
+
+    // ── Presentation ──────────────────────────────────────────────────────
+    // The simulation multipliers above are invisible on their own, so this node
+    // also owns the weather's look: a rain emitter and a ground fog volume that
+    // are enabled per state. Kept in code (not the scene) so any scene that
+    // instantiates WeatherSystem gets the visuals for free.
+
+    [ExportGroup("Presentation")]
+    [Export] public bool EnableVisuals = true;
+    [Export] public float FogRadius = 26f;
+    [Export] public float RainFallSpeed = 14f;
+
+    /// <summary>Rain particle emitter, or null when visuals are off.</summary>
+    public GpuParticles3D? RainParticles { get; private set; }
+
+    private void BuildVisuals()
+    {
+        if (!EnableVisuals || RainParticles != null) return;
+
+        var rain = new GpuParticles3D
+        {
+            Name = "Rain",
+            Amount = 900,
+            Lifetime = 1.4f,
+            LocalCoords = false,
+            ProcessMaterial = MakeRainMaterial(),
+            DrawPass1 = MakeRainMesh(),
+            VisibilityAabb = new Aabb(Vector3.Zero, new Vector3(70, 40, 70)),
+        };
+        AddChild(rain);
+        RainParticles = rain;
+    }
+
+    private ParticleProcessMaterial MakeRainMaterial()
+    {
+        // Stretched, downward, slightly transparent streaks.
+        return new ParticleProcessMaterial
+        {
+            EmissionShape = ParticleProcessMaterial.EmissionShapeEnum.Box,
+            EmissionBoxExtents = new Vector3(28f, 1f, 28f),
+            Direction = new Vector3(0.1f, -1f, 0f),
+            Spread = 2f,
+            InitialVelocityMin = RainFallSpeed,
+            InitialVelocityMax = RainFallSpeed * 1.15f,
+            Gravity = new Vector3(0, -12f, 0),
+            ScaleMin = 0.6f,
+            ScaleMax = 1.0f,
+            Color = new Color(0.7f, 0.8f, 0.95f, 0.55f),
+        };
+    }
+
+    private static Mesh MakeRainMesh()
+    {
+        var mesh = new BoxMesh { Size = new Vector3(0.012f, 0.42f, 0.012f) };
+        mesh.Material = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(0.72f, 0.82f, 0.95f, 0.5f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        };
+        return mesh;
+    }
+
+    /// <summary>Show/hide the rain and tune the world's volumetric fog.</summary>
+    private void ApplyVisuals(WeatherState weather)
+    {
+        if (!EnableVisuals) return;
+
+        if (RainParticles != null)
+        {
+            bool raining = weather is WeatherState.Rain or WeatherState.Storm;
+            RainParticles.Visible = raining;
+            RainParticles.Emitting = raining;
+        }
+
+        // Fog density lives on the Environment, not the volume, in Godot 4.
+        float density = weather switch
+        {
+            WeatherState.Fog => 0.045f,
+            WeatherState.Storm => 0.02f,
+            WeatherState.Rain => 0.01f,
+            _ => 0f,
+        };
+
+        if (WorldEnvironmentNode() is { } world && world.Environment != null)
+        {
+            var env = world.Environment;
+            env.VolumetricFogEnabled = density > 0.001f;
+            if (density > 0.001f)
+            {
+                env.VolumetricFogDensity = density;
+                env.VolumetricFogAlbedo = weather == WeatherState.Fog
+                    ? new Color(0.78f, 0.80f, 0.80f)
+                    : new Color(0.55f, 0.60f, 0.68f);
+                // Fog reads as a ground layer rather than a full-screen haze.
+                env.VolumetricFogLength = FogRadius * 2f;
+            }
+        }
+    }
+
+    private static WorldEnvironment? WorldEnvironmentNode()
+        => Engine.GetMainLoop() is SceneTree tree
+            ? tree.GetFirstNodeInGroup("world_environment") as WorldEnvironment
+              ?? (tree.CurrentScene?.FindChild("WorldEnvironment", true, false) as WorldEnvironment)
+            : null;
+
+    /// <summary>Keep the rain emitter centred above the player.</summary>
+    public override void _Process(double delta)
+    {
+        if (!EnableVisuals || RainParticles == null) return;
+
+        if (Engine.GetMainLoop() is SceneTree tree
+            && tree.GetFirstNodeInGroup("player") is Node3D player)
+        {
+            RainParticles.GlobalPosition = player.GlobalPosition + new Vector3(0f, 18f, 0f);
+        }
+    }
 }

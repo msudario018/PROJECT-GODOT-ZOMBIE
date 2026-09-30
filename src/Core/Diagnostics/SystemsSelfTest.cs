@@ -76,6 +76,7 @@ public partial class SystemsSelfTest : Node3D
         TestStage3Persistence();
         TestStage4WeatherAndSeasons();
         TestStage5PauseMenu();
+        TestStage6LiveDifficulty();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -1045,6 +1046,96 @@ public partial class SystemsSelfTest : Node3D
         playerRoot.QueueFree();
     }
 
+    // ── Stage 6: difficulty applies to zombies already in the world ──
+
+    private void TestStage6LiveDifficulty()
+    {
+        GD.Print("── Stage 6: Live Difficulty Scaling ──");
+
+        var config = ConfigManager.Instance;
+        Check("ConfigManager is available", config != null);
+        if (config == null) return;
+
+        DifficultyPreset original = config.Difficulty;
+
+        // A zombie spawned now must retune when the preset changes, without
+        // being respawned. Night is forced off so the only variable is difficulty.
+        // The bare node needs its component children, or _Ready throws.
+        var zombie = new Entities.Zombies.ZombieBase
+        {
+            Name = "TestDifficultyZombie",
+            MoveSpeed = 2.0f,
+            AttackDamage = 15.0f,
+        };
+        zombie.AddChild(new Core.Components.HealthComponent { Name = "HealthComponent" });
+        AddChild(zombie);
+
+        if (TimeManager.Instance is { } time)
+        {
+            time.SetHour(12f);   // day: no frenzy multiplier
+        }
+
+        Check("authored stats are preserved as the base",
+            Mathf.Abs(zombie.BaseMoveSpeed - 2.0f) < 0.001f
+            && Mathf.Abs(zombie.BaseAttackDamage - 15.0f) < 0.001f,
+            $"(speed {zombie.BaseMoveSpeed}, damage {zombie.BaseAttackDamage})");
+
+        config.SetDifficulty(DifficultyPreset.Standard);
+        float standardSpeed = zombie.EffectiveMoveSpeed;
+        float standardDamage = zombie.EffectiveAttackDamage;
+        Check("standard preset is the neutral baseline",
+            Mathf.Abs(standardSpeed - 2.0f) < 0.01f && Mathf.Abs(standardDamage - 15f) < 0.01f,
+            $"(speed {standardSpeed:F2}, damage {standardDamage:F1})");
+
+        // The key regression: the SAME zombie instance must change.
+        config.SetDifficulty(DifficultyPreset.Hardcore);
+        float hardcoreSpeed = zombie.EffectiveMoveSpeed;
+        float hardcoreDamage = zombie.EffectiveAttackDamage;
+
+        Check("changing the preset retunes a zombie already in the world",
+            hardcoreSpeed > standardSpeed && hardcoreDamage > standardDamage,
+            $"(speed {standardSpeed:F2} → {hardcoreSpeed:F2}, " +
+            $"damage {standardDamage:F1} → {hardcoreDamage:F1})");
+        Check("hardcore damage is 1.5× the authored value",
+            Mathf.Abs(hardcoreDamage - 22.5f) < 0.01f, $"({hardcoreDamage:F1})");
+
+        config.SetDifficulty(DifficultyPreset.Casual);
+        Check("casual scales the same zombie back down",
+            zombie.EffectiveAttackDamage < standardDamage && zombie.EffectiveMoveSpeed < standardSpeed,
+            $"(damage {zombie.EffectiveAttackDamage:F1}, speed {zombie.EffectiveMoveSpeed:F2})");
+
+        // Re-applying a preset must not compound (the old spawn-time bug).
+        config.SetDifficulty(DifficultyPreset.Hardcore);
+        float firstPass = zombie.EffectiveAttackDamage;
+        config.SetDifficulty(DifficultyPreset.Standard);
+        config.SetDifficulty(DifficultyPreset.Hardcore);
+        Check("re-applying a preset does not compound the multiplier",
+            Mathf.Abs(zombie.EffectiveAttackDamage - firstPass) < 0.01f
+            && Mathf.Abs(firstPass - 22.5f) < 0.01f,
+            $"({zombie.EffectiveAttackDamage:F1} vs {firstPass:F1})");
+
+        // Night frenzy and weather pressure must still stack on top.
+        if (TimeManager.Instance is { } clock)
+        {
+            clock.SetHour(23f);   // night: ×1.35
+            config.SetDifficulty(DifficultyPreset.Standard);
+            float nightSpeed = zombie.EffectiveMoveSpeed;
+            Check("night frenzy still stacks on top of difficulty",
+                nightSpeed > standardSpeed * 1.3f,
+                $"({nightSpeed:F2} vs {standardSpeed:F2}; " +
+                $"clock hour {clock.CurrentHour:F1}, phase {clock.CurrentPhase}, " +
+                $"night mult {(DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f):F2})");
+            clock.SetHour(12f);
+        }
+
+        config.SetDifficulty(original);
+        Check("restoring the preset restores the zombie",
+            Mathf.Abs(zombie.EffectiveAttackDamage - 15f) < 0.01f,
+            $"({zombie.EffectiveAttackDamage:F1})");
+
+        zombie.QueueFree();
+    }
+
     // ── Stage 5: pause / settings menu ──────────────────────────────
 
     private void TestStage5PauseMenu()
@@ -1265,7 +1356,10 @@ public partial class SystemsSelfTest : Node3D
             EventBus.Instance.OnSeasonChanged -= onSeason;
         }
 
-        weather.ForcedWeatherIndex = -1;
+        // Leave the climate neutral so later stages see unmultiplied stats.
+        weather.ForcedWeatherIndex = (int)WeatherState.Clear;
+        weather.EvaluateForDay(1, announce: false);
+        Check("weather builds a rain emitter", weather.RainParticles != null);
         weather.QueueFree();
     }
 

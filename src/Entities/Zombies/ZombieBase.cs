@@ -26,6 +26,20 @@ public partial class ZombieBase : CharacterBody3D
     [Export] public string ArchetypeName = "Zombie";
     [Export] public float MoveSpeed = 2.0f;
     [Export] public float AttackDamage = 15.0f;
+
+    /// <summary>
+    /// The authored stats before the difficulty preset is applied. Difficulty is
+    /// resolved per use (<see cref="EffectiveMoveSpeed"/> /
+    /// <see cref="EffectiveAttackDamage"/>) so changing the preset in the pause
+    /// menu retunes zombies that are already in the world.
+    /// </summary>
+    public float BaseMoveSpeed { get; private set; }
+    public float BaseAttackDamage { get; private set; }
+
+    /// <summary>Attack damage after the difficulty preset.</summary>
+    public float EffectiveAttackDamage =>
+        BaseAttackDamage * (Core.Autoloads.ConfigManager.Instance?.ZombieDamageMultiplier ?? 1f);
+
     [Export] public float AttackRange = 1.4f;
     [Export] public float AttackCooldown = 1.5f;
     [Export] public float HordePressureForce = 1.0f;
@@ -66,13 +80,10 @@ public partial class ZombieBase : CharacterBody3D
         Health.Died += OnDied;
         Health.DamageTaken += OnDamageTaken;
 
-        // Difficulty preset scales the horde's pace and bite at spawn time.
-        var config = ZombieApocalypse.Core.Autoloads.ConfigManager.Instance;
-        if (config != null)
-        {
-            MoveSpeed *= config.ZombieSpeedMultiplier;
-            AttackDamage *= config.ZombieDamageMultiplier;
-        }
+        // Snapshot the authored stats; the difficulty preset is applied on read
+        // (EffectiveMoveSpeed / EffectiveAttackDamage) so it can change mid-run.
+        BaseMoveSpeed = MoveSpeed;
+        BaseAttackDamage = AttackDamage;
 
         AddToGroup("zombies");
         SharedSpatialGrid.UpdateEntity(this, GlobalPosition);
@@ -128,16 +139,18 @@ public partial class ZombieBase : CharacterBody3D
     /// instead of individual NavigationAgent3D.
     /// </summary>
     /// <summary>
-    /// Move speed including the night frenzy modifier from <see cref="World.Environment.DayNightCycle"/>.
-    /// At night all zombies become faster (×1.35). AI states should use this
-    /// instead of the raw <see cref="MoveSpeed"/> export.
+    /// Move speed after every live modifier: the difficulty preset, the night
+    /// frenzy (<see cref="Core.Autoloads.TimeManager.ZombieNightMultiplier"/>) and
+    /// the weather/season horde pressure. AI states should use this rather than
+    /// the raw <see cref="MoveSpeed"/> export.
+    ///
+    /// The clock is read from the autoload rather than DayNightCycle, so the
+    /// multiplier applies in scenes that have no DayNightCycle node.
     /// </summary>
-    /// <summary>Current weather, or Clear when no WeatherSystem is in the scene.</summary>
-    private WeatherState CurrentWeather => WeatherSystem.Instance?.CurrentWeather ?? WeatherState.Clear;
-
     public float EffectiveMoveSpeed =>
-        MoveSpeed
-        * (World.Environment.DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f)
+        BaseMoveSpeed
+        * (Core.Autoloads.ConfigManager.Instance?.ZombieSpeedMultiplier ?? 1f)
+        * (Core.Autoloads.TimeManager.Instance?.ZombieNightMultiplier ?? 1f)
         * (World.Environment.WeatherSystem.Instance?.HordePressureMultiplier ?? 1f);
 
     public bool ShouldUseFlowField()

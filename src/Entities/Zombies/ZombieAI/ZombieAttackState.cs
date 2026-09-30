@@ -74,7 +74,7 @@ public partial class ZombieAttackState : ZombieBaseState
             var targetHealth = target.GetNodeOrNull<HealthComponent>("HealthComponent");
             if (targetHealth != null && targetHealth.IsAlive)
             {
-                targetHealth.TakeDamage(Zombie.AttackDamage, DamageType.Slash, Zombie);
+                targetHealth.TakeDamage(Zombie.EffectiveAttackDamage, DamageType.Slash, Zombie);
             }
         }
     }
