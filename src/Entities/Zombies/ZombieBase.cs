@@ -65,6 +65,14 @@ public partial class ZombieBase : CharacterBody3D
         Health.Died += OnDied;
         Health.DamageTaken += OnDamageTaken;
 
+        // Difficulty preset scales the horde's pace and bite at spawn time.
+        var config = ZombieApocalypse.Core.Autoloads.ConfigManager.Instance;
+        if (config != null)
+        {
+            MoveSpeed *= config.ZombieSpeedMultiplier;
+            AttackDamage *= config.ZombieDamageMultiplier;
+        }
+
         AddToGroup("zombies");
         SharedSpatialGrid.UpdateEntity(this, GlobalPosition);
     }

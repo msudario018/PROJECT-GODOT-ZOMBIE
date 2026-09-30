@@ -24,20 +24,39 @@ public partial class DayNightCycle : Node3D
     [ExportGroup("Time Configuration")]
     /// <summary>Length of a full 24h day in real-time seconds. Default: 360s (6 minutes).</summary>
     [Export] public float DayDurationSeconds = 360f;
-    /// <summary>Current time in hours (0.00 to 23.99). Defaults to 12.0 (Noon).</summary>
-    [Export] public float CurrentHour = 12.0f;
-    [Export] public bool IsTimePaused = false;
+    /// <summary>Hour-of-day the clock starts at (pushed once to TimeManager).</summary>
+    [Export] public float StartingHour = 12.0f;
+    /// <summary>Whether to start with the clock frozen.</summary>
+    [Export] public bool StartPaused = false;
 
     [ExportGroup("Scene References")]
     [Export] public DirectionalLight3D? SunLight;
     [Export] public WorldEnvironment? EnvironmentNode;
 
-    // ── Public State ─────────────────────────────────────────────────
-    public DayPhase CurrentPhase { get; private set; } = DayPhase.Day;
+    // ── Public state ─────────────────────────────────────────────────
+    // The authoritative clock lives in the TimeManager autoload so time keeps
+    // running across scene reloads; this node is the lighting view of it and
+    // falls back to a local clock when the autoload is unavailable.
+
+    private static ZombieApocalypse.Core.Autoloads.TimeManager? Time
+        => ZombieApocalypse.Core.Autoloads.TimeManager.Instance;
+
+    private float _localHour = 12.0f;
+    private DayPhase _localPhase = DayPhase.Day;
+
+    /// <summary>Hour-of-day clock (0-24).</summary>
+    public float CurrentHour => Time?.CurrentHour ?? _localHour;
+    /// <summary>True when the clock is frozen.</summary>
+    public bool IsTimePaused => Time?.IsTimePaused ?? false;
+    /// <summary>Current day/night phase.</summary>
+    public DayPhase CurrentPhase => Time?.CurrentPhase ?? _localPhase;
+    /// <summary>Survival day counter (starts at 1).</summary>
+    public int DayCount => Time?.DayCount ?? 1;
+
     public bool IsNight => CurrentPhase == DayPhase.Night;
 
     /// <summary>Zombie speed and hearing multiplier during night frenzy.</summary>
-    public float ZombieNightMultiplier => IsNight ? 1.35f : 1.0f;
+    public float ZombieNightMultiplier => Time?.ZombieNightMultiplier ?? (IsNight ? 1.35f : 1.0f);
 
     // ── Signals ──────────────────────────────────────────────────────
     [Signal] public delegate void TimeChangedEventHandler(float hour, float minute);
@@ -48,6 +67,12 @@ public partial class DayNightCycle : Node3D
     public override void _Ready()
     {
         Instance = this;
+
+        // Hand the authored scene values to the autoload (first cycle only, so
+        // reloading the arena does not rewind the clock).
+        Time?.ApplySceneSettings(DayDurationSeconds, StartingHour, StartPaused);
+        _localHour = CurrentHour;
+        _previousPhase = CurrentPhase;
 
         if (SunLight == null)
             SunLight = GetNodeOrNull<DirectionalLight3D>("DirectionalLight3D") 
@@ -67,11 +92,16 @@ public partial class DayNightCycle : Node3D
 
     public override void _Process(double delta)
     {
-        if (IsTimePaused) return;
-
         float dt = (float)delta;
-        float hoursPerSecond = 24.0f / DayDurationSeconds;
-        CurrentHour = (CurrentHour + hoursPerSecond * dt) % 24.0f;
+
+        // Fallback mode: when the TimeManager autoload is absent this node
+        // drives the clock itself, keeping the node usable in isolation.
+        if (Time == null && !IsTimePaused)
+        {
+            float hoursPerSecond = 24.0f / Mathf.Max(1f, DayDurationSeconds);
+            _localHour = (_localHour + hoursPerSecond * dt) % 24.0f;
+            UpdateLocalPhase();
+        }
 
         UpdateSunAndAtmosphere(dt);
 
@@ -79,18 +109,22 @@ public partial class DayNightCycle : Node3D
         EmitSignal(SignalName.TimeChanged, Mathf.Floor(CurrentHour), minute);
     }
 
+    /// <summary>Phase boundaries used in fallback mode (mirrors TimeManager).</summary>
+    private void UpdateLocalPhase()
+    {
+        if (_localHour >= 5.0f && _localHour < 8.0f)
+            _localPhase = DayPhase.Dawn;
+        else if (_localHour >= 8.0f && _localHour < 18.0f)
+            _localPhase = DayPhase.Day;
+        else if (_localHour >= 18.0f && _localHour < 21.0f)
+            _localPhase = DayPhase.Dusk;
+        else
+            _localPhase = DayPhase.Night;
+    }
+
     private void UpdateSunAndAtmosphere(float dt)
     {
-        // Determine phase
-        if (CurrentHour >= 5.0f && CurrentHour < 8.0f)
-            CurrentPhase = DayPhase.Dawn;
-        else if (CurrentHour >= 8.0f && CurrentHour < 18.0f)
-            CurrentPhase = DayPhase.Day;
-        else if (CurrentHour >= 18.0f && CurrentHour < 21.0f)
-            CurrentPhase = DayPhase.Dusk;
-        else
-            CurrentPhase = DayPhase.Night;
-
+        // The phase itself is owned by TimeManager; this node only reacts.
         if (CurrentPhase != _previousPhase)
         {
             _previousPhase = CurrentPhase;

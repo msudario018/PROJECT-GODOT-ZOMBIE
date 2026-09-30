@@ -1,5 +1,6 @@
 using Godot;
 using System.Collections.Generic;
+using ZombieApocalypse.Core.Audio;
 using ZombieApocalypse.Core.Autoloads;
 using ZombieApocalypse.Core.Components;
 using ZombieApocalypse.Core.Data;
@@ -68,6 +69,7 @@ public partial class SystemsSelfTest : Node3D
         TestPhase7BanditSquad();
         TestPhase7Airdrop();
         TestStage1WiringFixes();
+        TestStage2Services();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -711,6 +713,144 @@ public partial class SystemsSelfTest : Node3D
         Check("surplus charges the battery", _battery.ChargeWattHours > 0f,
             $"({_battery.ChargeWattHours:F2}Wh after 1s of 390W surplus)");
         Check("grid summary reports a single grid", PowerGrid.Instance != null && _grid.IslandCount == 1);
+    }
+
+    // ── Stage 2: Config / Time / Audio autoload services ─────────────
+
+    private void TestStage2Services()
+    {
+        GD.Print("── Stage 2: Config, Time and Audio autoloads ──");
+
+        // ── ConfigManager ────────────────────────────────────────────
+        var config = ConfigManager.Instance;
+        Check("ConfigManager autoload is online", config != null);
+        if (config != null)
+        {
+            Check("standard difficulty is the neutral baseline",
+                Mathf.Abs(config.ZombieDamageMultiplier - 1f) < 0.001f
+                && Mathf.Abs(config.ZombieSpeedMultiplier - 1f) < 0.001f
+                && Mathf.Abs(config.LootQuantityMultiplier - 1f) < 0.001f);
+
+            config.SetDifficulty(DifficultyPreset.Hardcore);
+            Check("hardcore makes zombies deadlier and faster",
+                config.ZombieDamageMultiplier > 1f && config.ZombieSpeedMultiplier > 1f,
+                $"(dmg ×{config.ZombieDamageMultiplier:F2}, speed ×{config.ZombieSpeedMultiplier:F2})");
+            Check("hardcore tightens the loot economy", config.LootQuantityMultiplier < 1f,
+                $"(loot ×{config.LootQuantityMultiplier:F2})");
+
+            config.SetDifficulty(DifficultyPreset.Casual);
+            Check("casual favours the survivor",
+                config.ZombieDamageMultiplier < 1f && config.LootQuantityMultiplier > 1f);
+
+            config.SetDifficulty(DifficultyPreset.Standard);
+
+            float original = config.MasterVolume;
+            config.SetMasterVolume(0.42f);
+            Check("settings persist across a reload",
+                Mathf.Abs(config.MasterVolume - 0.42f) < 0.001f,
+                Near(config.MasterVolume, 0.42f));
+            config.SetMasterVolume(original);
+        }
+
+        // ── TimeManager ──────────────────────────────────────────────
+        var time = TimeManager.Instance;
+        Check("TimeManager autoload is online", time != null);
+        if (time != null)
+        {
+            bool wasPaused = time.IsTimePaused;
+            time.IsTimePaused = true;
+
+            time.SetHour(12f);
+            Check("noon is day with no frenzy bonus",
+                time.CurrentPhase == DayPhase.Day && !time.IsNight
+                && Mathf.Abs(time.ZombieNightMultiplier - 1f) < 0.001f);
+
+            time.SetHour(23f);
+            Check("midnight triggers the night frenzy",
+                time.CurrentPhase == DayPhase.Night && time.IsNight
+                && Mathf.Abs(time.ZombieNightMultiplier - 1.35f) < 0.001f);
+
+            time.SetHour(6f);
+            Check("06:00 reads as dawn", time.CurrentPhase == DayPhase.Dawn);
+
+            int dayBefore = time.DayCount;
+            time.Advance(2f);
+            Check("hours before midnight keep the day count", time.DayCount == dayBefore);
+            time.Advance(22f);
+            Check("crossing midnight rolls the survival day",
+                time.DayCount == dayBefore + 1 && Mathf.Abs(time.CurrentHour - 6f) < 0.05f,
+                $"(day {time.DayCount}, hour {time.CurrentHour:F2})");
+
+            // DayNightCycle must mirror the authoritative clock.
+            var cycle = DayNightCycle.Instance;
+            Check("DayNightCycle mirrors the autoload clock",
+                cycle == null || Mathf.Abs(cycle.CurrentHour - time.CurrentHour) < 0.5f,
+                cycle == null ? "(no cycle node in this scene)" : Near(cycle.CurrentHour, time.CurrentHour, 0.5f));
+
+            time.IsTimePaused = wasPaused;
+        }
+
+        // ── Procedural sound bank ────────────────────────────────────
+        var gunshot = ProceduralSfx.Get(SfxId.Gunshot);
+        Check("gunshot clip is synthesised", gunshot != null && gunshot.Data.Length > 1000,
+            $"({gunshot?.Data.Length ?? 0} bytes)");
+        Check("clips are cached, not rebuilt per call",
+            ReferenceEquals(gunshot, ProceduralSfx.Get(SfxId.Gunshot))
+            && ProceduralSfx.CachedClipCount >= 2,
+            $"({ProceduralSfx.CachedClipCount} cached)");
+
+        var hum = ProceduralSfx.Get(SfxId.GeneratorHum);
+        Check("generator hum loops seamlessly",
+            hum.LoopMode == AudioStreamWav.LoopModeEnum.Forward && hum.LoopEnd > 0,
+            $"(loop end {hum.LoopEnd})");
+
+        float peak = 0f;
+        for (int i = 0; i < gunshot.Data.Length - 1; i += 2)
+        {
+            short sample = (short)(gunshot.Data[i] | (gunshot.Data[i + 1] << 8));
+            peak = Mathf.Max(peak, Mathf.Abs(sample));
+        }
+        Check("gunshot actually carries signal", peak > 3000, $"(peak {peak})");
+
+        // ── AudioManager mapping + playback ──────────────────────────
+        var (gunSfx, gunDistance) = AudioManager.MapSource(AudioSourceType.Gunshot, 55f);
+        var (screamSfx, _) = AudioManager.MapSource(AudioSourceType.VoiceZombie, 45f);
+        var (groanSfx, _) = AudioManager.MapSource(AudioSourceType.VoiceZombie, 18f);
+        Check("gunshots map to the gunshot clip", gunSfx == SfxId.Gunshot && gunDistance > 40f,
+            $"({gunSfx}, {gunDistance:F0}m)");
+        Check("a loud zombie voice is a scream, a quiet one a groan",
+            screamSfx == SfxId.ZombieScream && groanSfx == SfxId.ZombieGroan);
+        Check("louder events are louder than quiet ones",
+            AudioManager.LoudnessFromRadius(60f) > AudioManager.LoudnessFromRadius(10f),
+            $"(10m {AudioManager.LoudnessFromRadius(10f):F2} vs 60m {AudioManager.LoudnessFromRadius(60f):F2})");
+
+        var audio = AudioManager.Instance;
+        Check("AudioManager autoload is online", audio != null);
+        if (audio != null)
+        {
+            int eventsBefore = audio.EventsReceived;
+            int playedBefore = audio.SoundsPlayed;
+
+            EventBus.Instance?.EmitSound(new Vector3(0f, 1f, 0f), 55f, AudioSourceType.Gunshot);
+            EventBus.Instance?.EmitSound(new Vector3(2f, 1f, 0f), 20f, AudioSourceType.Footstep);
+
+            Check("acoustic events reach the mixer", audio.EventsReceived == eventsBefore + 2,
+                $"({eventsBefore} → {audio.EventsReceived})");
+            Check("each event consumes a pooled voice", audio.SoundsPlayed == playedBefore + 2,
+                $"({playedBefore} → {audio.SoundsPlayed})");
+
+            var cfg = ConfigManager.Instance;
+            if (cfg != null)
+            {
+                float master = cfg.MasterVolume;
+                cfg.SetMasterVolume(0f);
+                int playedAtZero = audio.SoundsPlayed;
+                audio.PlayUi(SfxId.Blip);
+                Check("muted master still plays (volume-driven, not skipped)",
+                    audio.SoundsPlayed == playedAtZero + 1);
+                cfg.SetMasterVolume(master);
+            }
+        }
     }
 
 }

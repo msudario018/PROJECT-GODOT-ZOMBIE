@@ -327,13 +327,16 @@ public partial class LootContainer : StaticBody3D
         else
         {
             var table = _tables.GetValueOrDefault(ContainerType) ?? _tables[ContainerArchetype.GeneralJunk];
-            int rolls = GD.RandRange(MinRolls, MaxRolls);
+            // Difficulty scales how much a search yields; fixed manifests (airdrops)
+            // stay exactly as authored.
+            float lootScale = ZombieApocalypse.Core.Autoloads.ConfigManager.Instance?.LootQuantityMultiplier ?? 1f;
+            int rolls = Mathf.Max(1, Mathf.RoundToInt(GD.RandRange(MinRolls, MaxRolls) * lootScale));
 
             for (int r = 0; r < rolls; r++)
             {
                 var entry = PickWeighted(table);
                 if (entry == null) continue;
-                int qty = GD.RandRange(entry.MinQty, entry.MaxQty);
+                int qty = Mathf.Max(1, Mathf.RoundToInt(GD.RandRange(entry.MinQty, entry.MaxQty) * lootScale));
                 int added = _targetInventory?.TryAdd(entry.Item, qty) ?? 0;
                 if (added > 0)
                     GD.Print($"[LootContainer] +{added}× {entry.Item.DisplayName}");

@@ -17,8 +17,11 @@ run/main_scene="res://scenes/levels/TestArena.tscn"
 
 [autoload]
 
+Config="*res://src/Core/Autoloads/ConfigManager.cs"
 Events="*res://src/Core/Autoloads/EventBus.cs"
 Game="*res://src/Core/Autoloads/GameManager.cs"
+TimeManager="*res://src/Core/Autoloads/TimeManager.cs"
+Audio="*res://src/Core/Autoloads/AudioManager.cs"
 
 [display]
 
