@@ -1,4 +1,5 @@
 using Godot;
+using ZombieApocalypse.Core.Components;
 using ZombieApocalypse.Core.Data;
 using ZombieApocalypse.Core.Utilities;
 using ZombieApocalypse.World.Environment;
@@ -24,6 +25,12 @@ public partial class SensorySystem : Node3D
     [ExportGroup("Hearing")]
     [Export] public float HearingSensitivity = 1.0f;
 
+    [ExportGroup("Smell")]
+    /// <summary>How far this tracker can follow a blood-scent trail (0 = cannot smell).</summary>
+    [Export] public float ScentRange = 0.0f;
+    /// <summary>Scent strength at which the trail is considered detectable.</summary>
+    [Export] public float ScentThreshold = 0.2f;
+
     /// <summary>
     /// Night-frenzy modifiers from <see cref="DayNightCycle"/>: at night zombies
     /// see ~35% further and hear ~35% better.
@@ -37,11 +44,18 @@ public partial class SensorySystem : Node3D
     [Signal] public delegate void TargetSpottedEventHandler(Node3D target);
     [Signal] public delegate void TargetLostEventHandler();
     [Signal] public delegate void SoundHeardEventHandler(Vector3 position, int soundType);
+    [Signal] public delegate void ScentTrackedEventHandler(Vector3 position, float strength);
 
     public Node3D? CurrentTarget { get; private set; }
     public Vector3 LastKnownTargetPosition { get; private set; }
     public Vector3 LastHeardSoundPosition { get; private set; }
+    /// <summary>The blood-scent point this tracker is currently following, if any.</summary>
+    public Vector3 TrackedScentPosition { get; private set; }
+    /// <summary>True while a scent trail is driving this tracker's movement.</summary>
+    public bool IsTrackingScent { get; private set; }
     public bool HasTarget => CurrentTarget != null && GodotObject.IsInstanceValid(CurrentTarget);
+    /// <summary>True when this tracker can follow scent at all.</summary>
+    public bool CanTrackScent => ScentRange > 0.01f;
 
     // Target search interval to prevent excessive raycasts
     private float _timeSinceLastSense = 0f;
@@ -64,6 +78,7 @@ public partial class SensorySystem : Node3D
         {
             _timeSinceLastSense = 0f;
             ScanForTargets();
+            ScanForScent();
         }
     }
 
@@ -74,6 +89,50 @@ public partial class SensorySystem : Node3D
     {
         LastHeardSoundPosition = origin;
         EmitSignal(SignalName.SoundHeard, origin, (int)type);
+    }
+
+    /// <summary>
+    /// Follow the strongest blood-scent puff within <see cref="ScentRange"/>.
+    ///
+    /// Scent deliberately bypasses the vision cone and the line-of-sight raycast:
+    /// that is the point of the mechanic. A bleeding target can be tracked through
+    /// walls and in total darkness, so bleeding under pressure is a real cost.
+    ///
+    /// Returns true when a trail was found; the caller should steer toward
+    /// <see cref="TrackedScentPosition"/> until it is reached and re-queried.
+    /// </summary>
+    public bool TryTrackScent()
+    {
+        if (!CanTrackScent)
+        {
+            IsTrackingScent = false;
+            return false;
+        }
+
+        // Night sharpens the sense of smell, the same way it sharpens hearing.
+        float range = ScentRange * (DayNightCycle.Instance?.ZombieNightMultiplier ?? 1f);
+
+        if (!ScentComponent.TryFindStrongestScent(GlobalPosition, range,
+                out Vector3 position, out float strength)
+            || strength < ScentThreshold)
+        {
+            IsTrackingScent = false;
+            return false;
+        }
+
+        bool isNew = !IsTrackingScent
+                     || TrackedScentPosition.DistanceTo(position) > 0.5f;
+
+        IsTrackingScent = true;
+        TrackedScentPosition = position;
+
+        if (isNew)
+        {
+            EmitSignal(SignalName.ScentTracked, position, strength);
+            GD.Print($"[SensorySystem] Blood scent picked up (strength {strength:F2}) at {position:F1}.");
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -125,6 +184,26 @@ public partial class SensorySystem : Node3D
         {
             CurrentTarget = null;
             EmitSignal(SignalName.TargetLost);
+        }
+    }
+
+    /// <summary>
+    /// Scent pass, run after vision. Losing line of sight does not end tracking:
+    /// if a trail is available the tracker keeps a last-known scent position, so
+    /// a wounded target that ducked behind a wall is still followed.
+    /// </summary>
+    private void ScanForScent()
+    {
+        if (!CanTrackScent) return;
+
+        if (!TryTrackScent() && CurrentTarget == null)
+        {
+            // Trail gone and nothing seen: fall back to the last scent we knew.
+            if (IsTrackingScent)
+            {
+                IsTrackingScent = false;
+                LastKnownTargetPosition = TrackedScentPosition;
+            }
         }
     }
 

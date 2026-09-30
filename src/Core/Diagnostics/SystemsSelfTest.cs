@@ -77,6 +77,10 @@ public partial class SystemsSelfTest : Node3D
         TestStage4WeatherAndSeasons();
         TestStage5PauseMenu();
         TestStage6LiveDifficulty();
+        TestStage8Infection();
+        TestStage8ScentTracking();
+        TestStage8ZombieRoster();
+        TestStage8Perimeter();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -625,6 +629,20 @@ public partial class SystemsSelfTest : Node3D
         Check("interactable component runs its callback", interactable.Interact(ally) && fired);
     }
 
+    /// <summary>
+    /// Spawn a bare archetype node with the component children it expects.
+    /// Without a HealthComponent child its _Ready throws, and _PhysicsProcess
+    /// then throws every frame for the rest of the run.
+    /// </summary>
+    private T SpawnZombie<T>(string name) where T : Entities.Zombies.ZombieBase, new()
+    {
+        var zombie = new T { Name = name };
+        zombie.AddChild(new HealthComponent { Name = "HealthComponent" });
+        zombie.AddChild(new Entities.Zombies.ZombieAI.SensorySystem { Name = "SensorySystem" });
+        AddChild(zombie);
+        return zombie;
+    }
+
     /// <summary>Total number of items across every inventory slot.</summary>
     private static int CountAllItems(InventoryComponent inventory)
     {
@@ -1044,6 +1062,520 @@ public partial class SystemsSelfTest : Node3D
         Check("health clamps to max", Mathf.Abs(health.CurrentHealth - health.MaxHealth) < 0.01f);
 
         playerRoot.QueueFree();
+    }
+
+    // ── Stage 8: perimeter tiers and traps ─────────────────────────
+
+    private void TestStage8Perimeter()
+    {
+        GD.Print("── Stage 8: Perimeter & Traps ──");
+
+        // ── Wall tiers 3 and 4 ────────────────────────────────────
+        var fence = new World.Defenses.WallTiers.ScrapWoodFence { Name = "Fence" };
+        var chain = new World.Defenses.WallTiers.ChainLinkWall { Name = "Chain" };
+        var palisade = new World.Defenses.WallTiers.LogPalisade { Name = "Palisade" };
+        var metal = new World.Defenses.WallTiers.CorrugatedMetal { Name = "Metal" };
+        AddChild(fence);
+        AddChild(chain);
+        AddChild(palisade);
+        AddChild(metal);
+
+        Check("the wall tiers form a ladder",
+            fence.WallTier == 1 && chain.WallTier == 2
+            && palisade.WallTier == 3 && metal.WallTier == 4);
+        Check("durability rises with every tier",
+            fence.Health.MaxHealth < chain.Health.MaxHealth
+            && chain.Health.MaxHealth < palisade.Health.MaxHealth
+            && palisade.Health.MaxHealth < metal.Health.MaxHealth,
+            $"{fence.Health.MaxHealth:F0} → {chain.Health.MaxHealth:F0} → " +
+            $"{palisade.Health.MaxHealth:F0} → {metal.Health.MaxHealth:F0}");
+        Check("pressure thresholds rise with the tiers",
+            palisade.PressureThreshold > fence.PressureThreshold
+            && metal.PressureThreshold > palisade.PressureThreshold);
+
+        Check("the palisade is tough but flammable",
+            palisade.Health.ResistSlash > fence.Health.ResistSlash
+            && palisade.Health.ResistFire < 0.5f,
+            $"(slash {palisade.Health.ResistSlash:F2}, fire {palisade.Health.ResistFire:F2})");
+        Check("the metal wall is nearly fireproof",
+            metal.Health.ResistFire > 0.8f && metal.Health.ResistBlunt > 0.6f,
+            $"(fire {metal.Health.ResistFire:F2})");
+        Check("the chain link still lets you see through",
+            !chain.BlocksVision && palisade.BlocksVision && metal.BlocksVision);
+        Check("the new walls join the wall groups",
+            palisade.IsInGroup("walls") && palisade.IsInGroup("spiked_walls")
+            && metal.IsInGroup("metal_walls"));
+
+        // The palisade's spikes wound a brute that rams it.
+        var brute = SpawnZombie<Entities.Zombies.Archetypes.BruteTank>("SpikeTestBrute");
+
+        float before = brute.Health.CurrentHealth;
+        float reflected = palisade.ReflectSpikeDamage(brute);
+        Check("the palisade spikes the rammer",
+            reflected > 0f && brute.Health.CurrentHealth < before, $"(−{reflected:F0} HP)");
+
+        // ── Traps ─────────────────────────────────────────────────
+        var punji = new World.Defenses.Traps.PunjiTrench { Name = "Punji", SafeDisarmDelay = 0f };
+        AddChild(punji);
+
+        Check("the punji is a single-use trap",
+            punji.IsArmed && !punji.IsSpent && punji.ReArmCooldown <= 0f);
+        Check("the punji joins the trap groups",
+            punji.IsInGroup("traps") && punji.IsInGroup("trap_punji"));
+
+        var prey = new Node3D { Name = "Prey" };
+        var preyHealth = new HealthComponent { Name = "HealthComponent", MaxHealth = 100f };
+        prey.AddChild(preyHealth);
+        AddChild(prey);
+
+        prey.Position = new Vector3(50f, 0f, 0f);
+        Check("a trap ignores distant victims", !punji.Fire(prey));
+
+        prey.Position = new Vector3(0.5f, 0f, 0f);
+        Check("the punji impales the victim",
+            punji.Fire(prey) && preyHealth.CurrentHealth < 100f, $"(−{punji.LastDamageDealt:F0} HP)");
+        Check("the punji is spent after firing", punji.IsSpent && !punji.IsArmed);
+        Check("a spent trap does not fire again", !punji.Fire(prey));
+
+        punji.ReArm();
+        Check("a trap can be re-armed", punji.IsArmed && !punji.IsSpent);
+        punji.Disarm();
+        Check("a trap can be disarmed safely", !punji.IsArmed && !punji.Fire(prey));
+        Check("a brute takes reduced stake damage",
+            punji.BruteResistance > 0f && punji.BruteResistance < 1f,
+            $"(resistance {punji.BruteResistance:P0})");
+
+        // ── Tripwire alarm ────────────────────────────────────────
+        var tripwire = new World.Defenses.Traps.TripwireAlarm { Name = "Tripwire", ReTriggerInterval = 5f };
+        AddChild(tripwire);
+
+        Check("the tripwire starts armed and has not alerted anyone",
+            tripwire.IsArmed && !tripwire.HasRaisedAlert);
+        Check("the tripwire is a repeating trap, unlike the punji",
+            tripwire.ReArmCooldown > 0f && punji.ReArmCooldown <= 0f,
+            $"(cooldown {tripwire.ReArmCooldown:F0}s vs {punji.ReArmCooldown:F0}s)");
+
+        int tripEvents = 0;
+        tripwire.Tripped += _ => tripEvents++;
+
+        bool tripped = tripwire.Fire(prey);
+        Check("the tripwire triggers on a crossing", tripped && tripEvents == 1);
+        Check("the tripwire raises exactly one alert",
+            tripwire.AlertsRaised == 1 && tripwire.HasRaisedAlert);
+        Check("the tripwire re-arms for the next breach",
+            tripwire.IsArmed && !tripwire.IsSpent);
+
+        // The brute is inside the alarm radius, so it should now be hunting.
+        brute.Position = new Vector3(3f, 0f, 0f);
+        tripwire.Fire(prey);
+        Check("the tripwire rallies the sector to the breach",
+            brute.IsAlerted && brute.AlertPosition.DistanceTo(tripwire.GlobalPosition) < 0.01f,
+            $"(alerted to {brute.AlertPosition})");
+        Check("the tripwire counts repeat alerts", tripwire.AlertsRaised == 2);
+
+        // ── Trap contract shared by both ──────────────────────────
+        Check("both traps share the TrapBase contract",
+            punji.GetType().BaseType == typeof(World.Defenses.Traps.TrapBase)
+            && tripwire.GetType().BaseType == typeof(World.Defenses.Traps.TrapBase));
+
+        foreach (Node n in new Node[] { punji, tripwire, prey, brute, fence, chain, palisade, metal })
+            n.QueueFree();
+    }
+
+    // ── Stage 8: Phase 8 zombie roster ──────────────────────────────
+
+    private void TestStage8ZombieRoster()
+    {
+        GD.Print("── Stage 8: Zombie Roster ──");
+
+        var shambler = SpawnZombie<Entities.Zombies.Archetypes.ShamblerWalker>("Shambler");
+        var sprinter = SpawnZombie<Entities.Zombies.Archetypes.SprinterRunner>("Sprinter");
+        var bloater = SpawnZombie<Entities.Zombies.Archetypes.BloaterBoomer>("Bloater");
+
+        Check("the original three archetypes still build",
+            shambler.ArchetypeName == "Shambler" && sprinter.ArchetypeName == "Sprinter"
+            && bloater.ArchetypeName == "Bloater");
+
+        // ── Screamer ──────────────────────────────────────────────
+        var siren = SpawnZombie<Entities.Zombies.Archetypes.ScreamerSiren>("Screamer");
+
+        Check("the screamer is fragile and mid-speed",
+            siren.Health.MaxHealth <= 80f && siren.BaseMoveSpeed < sprinter.BaseMoveSpeed,
+            $"({siren.Health.MaxHealth:F0} HP, {siren.BaseMoveSpeed:F1} m/s)");
+        Check("the screamer is a nuisance, not a bruiser",
+            siren.BaseAttackDamage < shambler.BaseAttackDamage);
+        Check("the screamer hears far better than it sees",
+            siren.Sensory.HearingSensitivity > sprinter.Sensory.HearingSensitivity
+            && siren.Sensory.SightRange < sprinter.Sensory.SightRange,
+            $"(hearing {siren.Sensory.HearingSensitivity:F1}, sight {siren.Sensory.SightRange:F0}m)");
+        Check("the screamer does not hunt by scent", siren.Sensory.ScentRange <= 0.01f);
+
+        siren.Position = new Vector3(0f, 0f, 0f);
+        shambler.Position = new Vector3(5f, 0f, 0f);
+        sprinter.Position = new Vector3(-8f, 0f, 0f);
+        bloater.Position = new Vector3(300f, 0f, 0f);
+
+        int alerted = siren.Scream();
+        Check("the scream alerts the local sector", alerted >= 2, $"({alerted} alerted)");
+        Check("every zombie in earshot is alerted", shambler.IsAlerted && sprinter.IsAlerted);
+        Check("a distant zombie is not alerted", Mathf.Abs(bloater.AlertTimer) < 0.01f,
+            $"(timer {bloater.AlertTimer:F1})");
+        Check("the alert points at a rally position",
+            shambler.AlertPosition.DistanceTo(siren.GlobalPosition) < 0.01f
+            || shambler.AlertPosition.DistanceTo(siren.Sensory.LastKnownTargetPosition) < 0.01f);
+        Check("the scream goes on cooldown",
+            siren.ScreamCooldownRemaining > 0f && siren.IsScreaming);
+
+        Vector3 flee = siren.GetEvasiveVelocity(siren.GlobalPosition + Vector3.Forward, 0.016f);
+        Check("the screamer retreats from a close target",
+            flee.Dot(-Vector3.Forward) > 0f, $"(velocity {flee})");
+        Check("the screamer still moves at a distance",
+            siren.GetEvasiveVelocity(siren.GlobalPosition + Vector3.Forward * 20f, 0.016f).Length() > 0.1f);
+
+        // ── Brute ─────────────────────────────────────────────────
+        var brute = SpawnZombie<Entities.Zombies.Archetypes.BruteTank>("Brute");
+
+        Check("the brute is a walking wall",
+            brute.Health.MaxHealth >= 500f && brute.BaseMoveSpeed < shambler.BaseMoveSpeed,
+            $"({brute.Health.MaxHealth:F0} HP, {brute.BaseMoveSpeed:F1} m/s)");
+        Check("the brute shrugs off slashes and blunt trauma",
+            brute.Health.ResistSlash > 0.3f && brute.Health.ResistBlunt > 0.3f,
+            $"(slash {brute.Health.ResistSlash:F2})");
+        Check("the brute is armoured and hits like a truck",
+            brute.Health.ArmorRating > 0f && brute.BaseAttackDamage > shambler.BaseAttackDamage * 2f,
+            $"({brute.BaseAttackDamage:F0} dmg)");
+        Check("the brute commits hard to a direction", brute.TurnSpeed < sprinter.TurnSpeed,
+            $"(turn {brute.TurnSpeed:F1})");
+        Check("the brute can smell blood", brute.Sensory.ScentRange > 0f);
+
+        Check("the brute starts idle",
+            brute.State == Entities.Zombies.Archetypes.BruteTank.RamState.Idle);
+        brute.BeginWindUp();
+        Check("the charge telegraphs before it lands",
+            brute.IsWindingUp && !brute.IsCharging && brute.WindUpDuration > 0f,
+            $"({brute.WindUpDuration:F1}s window)");
+
+        Vector3 lockedDirection = brute.ChargeDirection;
+        brute.RamCharge();
+        Check("a forced charge locks its direction",
+            brute.IsCharging && brute.ChargeDirection.IsEqualApprox(lockedDirection),
+            $"({brute.ChargeDirection})");
+        Check("the brute is far faster while charging",
+            brute.ChargeSpeedMultiplier > 2f, $"(×{brute.ChargeSpeedMultiplier:F1})");
+
+        // ── Hound ─────────────────────────────────────────────────
+        ScentComponent.ClearWorldScent();
+        var hound = SpawnZombie<Entities.Zombies.Archetypes.InfectedHound>("Hound");
+        var hound2 = SpawnZombie<Entities.Zombies.Archetypes.InfectedHound>("Hound2");
+        hound.Position = new Vector3(0f, 0f, 0f);
+        hound2.Position = new Vector3(4f, 0f, 0f);
+
+        Check("the hound is the fastest thing on legs",
+            hound.BaseMoveSpeed > sprinter.BaseMoveSpeed, $"({hound.BaseMoveSpeed:F1} m/s)");
+        Check("the hound dies to a stiff breeze",
+            hound.Health.MaxHealth < shambler.Health.MaxHealth, $"({hound.Health.MaxHealth:F0} HP)");
+        Check("the hound bites softly", hound.BaseAttackDamage < sprinter.BaseAttackDamage,
+            $"({hound.BaseAttackDamage:F0} dmg)");
+        Check("the hound sees poorly and smells superbly",
+            hound.Sensory.SightRange < sprinter.Sensory.SightRange && hound.Sensory.ScentRange > 20f,
+            $"(sight {hound.Sensory.SightRange:F0}m, scent {hound.Sensory.ScentRange:F0}m)");
+
+        ScentComponent.WorldScent.Add(new Core.Components.ScentPuff
+        {
+            Position = new Vector3(10f, 0f, 0f),
+            Strength = 1f,
+        });
+
+        bool locked = hound.Sensory.TryTrackScent();
+        int pack = hound.CallPack();
+
+        Check("the hound locks onto a blood trail", locked && hound.IsOnTheTrail);
+        Check("the hound heads for the freshest scent",
+            hound.DistanceToTrail > 0f && hound.GetTrailVelocity(0.016f).Length() > 0.1f,
+            $"({hound.DistanceToTrail:F1}m away)");
+        Check("the hound calls its pack onto the trail",
+            pack == 1 && hound2.IsAlerted, $"({pack} called)");
+
+        var victim = new Node3D { Name = "LungeVictim" };
+        var victimHealth = new HealthComponent { Name = "HealthComponent", MaxHealth = 100f };
+        victim.AddChild(victimHealth);
+        AddChild(victim);
+        victim.Position = hound.GlobalPosition + Vector3.Forward;
+
+        hound.Lunge(victim);
+        Check("the hound's lunge wounds its victim",
+            victimHealth.CurrentHealth < 100f, $"({victimHealth.CurrentHealth:F0} HP left)");
+
+        ScentComponent.ClearWorldScent();
+        foreach (Node n in new Node[]
+                 { siren, brute, hound, hound2, victim, shambler, sprinter, bloater })
+        {
+            n.QueueFree();
+        }
+    }
+
+    // ── Stage 8: blood scent tracking ──────────────────────────────
+
+    private void TestStage8ScentTracking()
+    {
+        GD.Print("── Stage 8: Blood Scent ──");
+
+        ScentComponent.ClearWorldScent();
+
+        // A "player" that bleeds as it walks.
+        var bleeder = new Node3D { Name = "BleedingPlayer", Position = new Vector3(0f, 0f, 0f) };
+        AddChild(bleeder);
+
+        var scent = new ScentComponent { Name = "Scent", DropInterval = 0.1f, MinMoveDistance = 0.5f };
+        bleeder.AddChild(scent);
+
+        int dropEvents = 0;
+        scent.ScentDropped += (_, _) => dropEvents++;
+
+        Check("a clean entity leaves no scent", !scent.IsBleeding && ScentComponent.WorldScent.Count == 0);
+        Check("the scent source registers itself", bleeder.IsInGroup("scent_sources"));
+
+        scent.ReportBleeding(5f);
+        Check("bleeding sets the flag", scent.IsBleeding);
+        Check("the first drop is immediate", scent.PuffsDropped == 1 && dropEvents == 1,
+            $"({scent.PuffsDropped} puffs)");
+        Check("the world holds the scent", ScentComponent.WorldScent.Count == 1);
+
+        // Walk a short trail.
+        for (int i = 1; i <= 4; i++)
+        {
+            bleeder.Position = new Vector3(i * 1.5f, 0f, 0f);
+            scent.DropPuff();
+        }
+
+        Check("a trail accumulates", ScentComponent.WorldScent.Count == 5,
+            $"({ScentComponent.WorldScent.Count} puffs)");
+
+        // Sprinting lays a stronger trail.
+        scent.IsSprinting = true;
+        bleeder.Position = new Vector3(9f, 0f, 0f);
+        scent.DropPuff();
+        float sprintStrength = ScentComponent.WorldScent[^1].Strength;
+        scent.IsSprinting = false;
+        bleeder.Position = new Vector3(11f, 0f, 0f);
+        scent.DropPuff();
+        float walkStrength = ScentComponent.WorldScent[^1].Strength;
+
+        Check("sprinting drops a stronger scent", sprintStrength > walkStrength,
+            $"(sprint {sprintStrength:F2} vs walk {walkStrength:F2})");
+
+        // ── Sampling ──────────────────────────────────────────────
+        float atTrail = ScentComponent.SampleScentStrength(new Vector3(6f, 0f, 0f), 3f);
+        float farAway = ScentComponent.SampleScentStrength(new Vector3(0f, 0f, 60f), 3f);
+        Check("scent is sampled near the trail", atTrail > 0f, $"({atTrail:F2})");
+        Check("scent is absent far from the trail", Mathf.Abs(farAway) < 0.01f, $"({farAway:F2})");
+
+        Check("the strongest puff can be located",
+            ScentComponent.TryFindStrongestScent(new Vector3(0f, 0f, 0f), 40f, out Vector3 strongest, out float strength)
+            && strength > 0f,
+            $"({strongest}, {strength:F2})");
+
+        // ── Decay ─────────────────────────────────────────────────
+        int beforeDecay = ScentComponent.WorldScent.Count;
+        ScentComponent.AgeWorldScent(1f);
+        Check("scent fades over time",
+            ScentComponent.WorldScent.Count == beforeDecay
+            && ScentComponent.WorldScent[0].Strength < 1f,
+            $"(strength {ScentComponent.WorldScent[0].Strength:F2})");
+
+        ScentComponent.AgeWorldScent(60f);
+        Check("old scent is cleaned up entirely", ScentComponent.WorldScent.Count == 0,
+            $"({ScentComponent.WorldScent.Count} left)");
+
+        // ── Sensory integration ───────────────────────────────────
+        // A blind tracker with a nose: no eyes needed, scent is enough.
+        var trackerRoot = new Node3D { Name = "TestTracker", Position = new Vector3(20f, 0f, 0f) };
+        AddChild(trackerRoot);
+
+        var sensory = new Entities.Zombies.ZombieAI.SensorySystem
+        {
+            Name = "SensorySystem",
+            ScentRange = 30f,
+            ScentThreshold = 0.2f,
+        };
+        trackerRoot.AddChild(sensory);
+
+        // A stock zombie has no nose at all.
+        var blind = new Entities.Zombies.ZombieAI.SensorySystem { Name = "BlindSensory" };
+        trackerRoot.AddChild(blind);
+        Check("a sensory system without smell cannot track",
+            !blind.CanTrackScent && !blind.TryTrackScent());
+
+        // Lay a fresh trail within its range.
+        bleeder.Position = new Vector3(22f, 0f, 0f);
+        scent.ReportBleeding(3f);
+
+        int scentEvents = 0;
+        sensory.ScentTracked += (_, _) => scentEvents++;
+
+        Check("a tracker picks up the trail",
+            sensory.TryTrackScent() && sensory.IsTrackingScent && scentEvents == 1,
+            $"(events {scentEvents})");
+        Check("the tracked point is the scent, not the tracker",
+            sensory.TrackedScentPosition.DistanceTo(bleeder.Position) < 0.01f,
+            $"({sensory.TrackedScentPosition} vs {bleeder.Position})");
+
+        // Too far to smell.
+        trackerRoot.Position = new Vector3(200f, 0f, 0f);
+        Check("a distant tracker smells nothing", !sensory.TryTrackScent());
+        Check("tracking state clears when the trail is out of range", !sensory.IsTrackingScent);
+
+        // Weak scent falls under the threshold.
+        trackerRoot.Position = new Vector3(0f, 0f, 0f);
+        ScentComponent.ClearWorldScent();
+        ScentComponent.WorldScent.Add(new Core.Components.ScentPuff
+        {
+            Position = new Vector3(1f, 0f, 0f),
+            Strength = 0.05f,   // below ScentThreshold (0.2)
+        });
+        Check("a faint trail is below the threshold", !sensory.TryTrackScent());
+        Check("scent survives regardless of line of sight",
+            ScentComponent.WorldScent.Count == 1, "(no raycast was involved)");
+
+        ScentComponent.ClearWorldScent();
+        bleeder.QueueFree();
+        trackerRoot.QueueFree();
+    }
+
+    // ── Stage 8: bite infection ─────────────────────────────────────
+
+    private void TestStage8Infection()
+    {
+        GD.Print("── Stage 8: Infection & Treatment ──");
+
+        var infection = new Systems.Infection.InfectionSystem { Name = "TestInfection" };
+        AddChild(infection);
+
+        int stageEvents = 0;
+        int amputations = 0;
+        infection.StageChanged += _ => stageEvents++;
+        infection.Amputated += () => amputations++;
+
+        Check("a clean entity is uninfected",
+            !infection.IsInfected && infection.Stage == Systems.Infection.InfectionStage.Uninfected
+            && Mathf.Abs(infection.Severity) < 0.001f);
+
+        // ── The bite roll ──────────────────────────────────────────
+        var luckyBite = infection.RollBite(chanceOverride: 0f);
+        Check("a 0% chance bite never infects",
+            !luckyBite.Infected && !infection.IsInfected, $"(roll {luckyBite.Roll:F2})");
+
+        var certainBite = infection.RollBite(chanceOverride: 1f);
+        Check("a 100% chance bite always infects",
+            certainBite.Infected && infection.IsInfected
+            && infection.Stage == Systems.Infection.InfectionStage.Incubation,
+            $"(roll {certainBite.Roll:F2})");
+        Check("a fresh bite starts in incubation with no symptoms",
+            Mathf.Abs(infection.HealthDrainPerSecond) < 0.001f
+            && Mathf.Abs(infection.StaminaCapMultiplier - 1f) < 0.001f);
+        Check("the bite raises a stage event", stageEvents >= 1, $"({stageEvents})");
+        Check("necrosis is scheduled", infection.SecondsUntilNecrosis > 0f,
+            $"({infection.SecondsUntilNecrosis:F0}s)");
+
+        // ── Staged progression ─────────────────────────────────────
+        infection.AdvanceStageTimer(infection.IncubationDuration + 1f);
+        Check("incubation matures into fever",
+            infection.Stage == Systems.Infection.InfectionStage.Fever, $"({infection.Stage})");
+        Check("fever drains health and caps stamina",
+            infection.HealthDrainPerSecond > 0f && infection.StaminaCapMultiplier < 1f,
+            $"({infection.HealthDrainPerSecond:F1}/s, stamina ×{infection.StaminaCapMultiplier:F2})");
+        Check("severity climbs with the stage", infection.Severity > 0.4f,
+            $"({infection.Severity:F2})");
+
+        infection.AdvanceStageTimer(infection.FeverDuration + 1f);
+        Check("fever spreads into infection",
+            infection.Stage == Systems.Infection.InfectionStage.Infection);
+
+        infection.AdvanceStageTimer(infection.SpreadDuration + 1f);
+        Check("infection reaches necrosis",
+            infection.Stage == Systems.Infection.InfectionStage.Necrosis);
+        Check("necrosis is the worst state",
+            Mathf.Abs(infection.Severity - 1f) < 0.001f
+            && infection.HealthDrainPerSecond > infection.InfectionHealthDrainPerSecond,
+            $"({infection.HealthDrainPerSecond:F1}/s)");
+        Check("necrosis has no time left", Mathf.Abs(infection.SecondsUntilNecrosis) < 0.01f);
+
+        // ── Treatment: tourniquet ──────────────────────────────────
+        infection.RollBite(chanceOverride: 1f);
+        Check("a new bite resets the state", infection.TourniquetsApplied == 0
+            && Mathf.Abs(infection.TimerRate - 1f) < 0.001f);
+
+        Check("a tourniquet applies", infection.ApplyTourniquet());
+        Check("a tourniquet slows the clock", Mathf.Abs(infection.TimerRate - 0.5f) < 0.001f,
+            $"(×{infection.TimerRate:F2})");
+        Check("tourniquets stack twice", infection.ApplyTourniquet());
+        Check("a third tourniquet is refused", !infection.ApplyTourniquet()
+            && infection.TourniquetsApplied == infection.MaxStackedTourniquets);
+        Check("a stacked tourniquet halves the clock again",
+            Mathf.Abs(infection.TimerRate) < 0.001f, $"(×{infection.TimerRate:F2})");
+        Check("a tourniquet does not cure", infection.IsInfected);
+
+        // ── Treatment: antibiotics ─────────────────────────────────
+        infection.ClearInfection();
+        infection.RollBite(chanceOverride: 1f);
+        float before = infection.SecondsUntilNecrosis;
+        Check("a failed antibiotic dose still buys time",
+            infection.ApplyAntibiotics(forceCure: false) && infection.SecondsUntilNecrosis > before,
+            $"({before:F0}s → {infection.SecondsUntilNecrosis:F0}s)");
+        Check("a failed dose leaves the infection running", infection.IsInfected);
+
+        Check("a successful antibiotic dose clears the infection",
+            infection.ApplyAntibiotics(forceCure: true) && !infection.IsInfected);
+        Check("antibiotics cannot be used when clean", !infection.ApplyAntibiotics(forceCure: true));
+
+        // ── Treatment: amputation ─────────────────────────────────
+        infection.RollBite(chanceOverride: 1f);
+        infection.AdvanceStageTimer(infection.IncubationDuration + infection.FeverDuration + 1f);
+        Check("the infection is spreading before surgery",
+            infection.Stage == Systems.Infection.InfectionStage.Infection);
+
+        Check("amputation cures the infection",
+            infection.Amputate("left arm") && !infection.IsInfected);
+        Check("amputation leaves a permanent movement penalty",
+            infection.HasBeenAmputated && infection.MovementSpeedPenalty > 0f,
+            $"({infection.AmputatedLimb}, -{infection.MovementSpeedPenalty:P0})");
+        Check("amputation raises its own event", amputations == 1, $"({amputations})");
+        Check("a healed survivor cannot be amputated again", !infection.Amputate("right arm"));
+
+        // ── Inventory-driven treatment ────────────────────────────
+        var kit = new InventoryComponent { Name = "TestKit", GrantStartingItems = false };
+        AddChild(kit);
+        kit.RestoreContents(new[] { (ItemData.Tourniquet, 2), (ItemData.Antibiotics, 1), (ItemData.BoneSaw, 1) });
+
+        infection.RollBite(chanceOverride: 1f);
+        Check("treating with a tourniquet consumes the item",
+            infection.TreatWith("tourniquet", kit) && kit.CountOf("tourniquet") == 1);
+
+        // Force a fresh infection for the saw: a real antibiotic dose has a 35%
+        // cure chance, so relying on it to leave the wound open would be flaky.
+        Check("treating with antibiotics consumes the item",
+            infection.TreatWith("antibiotics", kit) && kit.CountOf("antibiotics") == 0);
+
+        infection.RollBite(chanceOverride: 1f);
+        Check("the saw is a cure while infected", infection.IsInfected);
+        Check("treating with the saw consumes it and cures",
+            infection.TreatWith("bone_saw", kit, "right leg") && !infection.IsInfected);
+        Check("the amputation is recorded on the survivor",
+            infection.AmputatedLimb == "right leg", $"({infection.AmputatedLimb})");
+
+        infection.RollBite(chanceOverride: 1f);
+        Check("an unknown item is not a treatment", !infection.TreatWith("molotov", kit));
+        Check("treatment fails without the item in the pack",
+            !infection.TreatWith("antibiotics", kit) && infection.IsInfected);
+
+        // ── Items are registered so saves can resolve them ─────────
+        Check("treatment items resolve by id",
+            ItemData.Find("tourniquet") == ItemData.Tourniquet
+            && ItemData.Find("antibiotics") == ItemData.Antibiotics
+            && ItemData.Find("bone_saw") == ItemData.BoneSaw);
+
+        kit.QueueFree();
+        infection.QueueFree();
     }
 
     // ── Stage 6: difficulty applies to zombies already in the world ──

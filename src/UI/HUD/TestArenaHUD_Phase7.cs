@@ -167,5 +167,41 @@ public partial class TestArenaHUD
                 ? $"{survivor.SurvivorName} joined the camp!"
                 : "Survivor cap reached.";
         }
+        else if (key.Keycode == Key.U || key.Keycode == Key.I || key.Keycode == Key.O)
+        {
+            // Phase 8 roster: [U] Screamer, [I] Brute, [O] Hound.
+            var spawned = SpawnPhase8Zombie(key.Keycode);
+            if (spawned != null)
+                _statusLabel.Text = $"{spawned.ArchetypeName} spawned — {spawned.Health.MaxHealth:F0} HP.";
+            else
+                _statusLabel.Text = "Could not spawn that archetype.";
+        }
+    }
+
+    /// <summary>Spawn one of the Phase 8 zombies at a spot in front of the player.</summary>
+    private Entities.Zombies.ZombieBase? SpawnPhase8Zombie(Key key)
+    {
+        string? path = key switch
+        {
+            Key.U => "res://scenes/entities/zombies/archetypes/ScreamerSiren.tscn",
+            Key.I => "res://scenes/entities/zombies/archetypes/BruteTank.tscn",
+            Key.O => "res://scenes/entities/zombies/archetypes/InfectedHound.tscn",
+            _ => null,
+        };
+        if (path == null) return null;
+
+        var scene = GD.Load<PackedScene>(path);
+        if (scene == null) return null;
+
+        var zombie = scene.Instantiate<Entities.Zombies.ZombieBase>();
+        if (zombie == null) return null;
+
+        var player = GetTree().GetFirstNodeInGroup("player") as Node3D;
+        zombie.GlobalPosition = player != null
+            ? player.GlobalPosition - player.GlobalTransform.Basis.Z * 12f + Vector3.Up * 0.2f
+            : new Vector3(0f, 0.2f, -10f);
+
+        GetTree().CurrentScene.AddChild(zombie);
+        return zombie;
     }
 }

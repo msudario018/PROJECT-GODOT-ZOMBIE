@@ -222,20 +222,34 @@ public class SaveData
 
     public string ToJson() => Json.Stringify(ToDictionary(), "  ");
 
-    /// <summary>Parse a save file. Returns null for malformed JSON or an unknown version.</summary>
+    /// <summary>
+    /// Parse a save file. Returns null for malformed JSON or an unknown version.
+    ///
+    /// Never throws: a corrupt or hand-edited save must degrade to "no save"
+    /// rather than abort whatever load flow called us.
+    /// </summary>
     public static SaveData? FromJson(string json)
     {
         if (string.IsNullOrWhiteSpace(json)) return null;
 
-        var parsed = Json.ParseString(json);
-        if (parsed.VariantType != Variant.Type.Dictionary) return null;
-
-        var data = FromDictionary(parsed.AsGodotDictionary());
-        if (data.Version != CurrentVersion)
+        try
         {
-            GD.PushWarning($"[SaveData] Ignoring save with unsupported version {data.Version} (expected {CurrentVersion}).");
+            var parsed = Json.ParseString(json);
+            if (parsed.VariantType != Variant.Type.Dictionary) return null;
+
+            var data = FromDictionary(parsed.AsGodotDictionary());
+            if (data.Version != CurrentVersion)
+            {
+                GD.Print($"[SaveData] Ignoring save with unsupported version " +
+                         $"{data.Version} (expected {CurrentVersion}).");
+                return null;
+            }
+            return data;
+        }
+        catch (System.Exception e)
+        {
+            GD.PrintErr($"[SaveData] Malformed save rejected: {e.Message}");
             return null;
         }
-        return data;
     }
 }

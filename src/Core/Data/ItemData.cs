@@ -136,6 +136,24 @@ public partial class ItemData : Resource
         Category = ItemCategory.Weapon, MaxStack = 4, WeightKg = 0.8f,
         IconColor = new Color(1f, 0.55f, 0.15f)
     };
+    private static readonly ItemData _tourniquet = new()
+    {
+        ItemId = "tourniquet", DisplayName = "Tourniquet", Description = "Crushes a limb's blood flow. Slows infection, at a stamina cost.",
+        Category = ItemCategory.Medical, MaxStack = 3, WeightKg = 0.2f,
+        IconColor = new Color(0.8f, 0.3f, 0.3f)
+    };
+    private static readonly ItemData _antibiotics = new()
+    {
+        ItemId = "antibiotics", DisplayName = "Antibiotics", Description = "Fights the infection. Buys days, rarely a full cure.",
+        Category = ItemCategory.Medical, MaxStack = 4, WeightKg = 0.3f,
+        IconColor = new Color(0.4f, 0.9f, 0.6f)
+    };
+    private static readonly ItemData _saw = new()
+    {
+        ItemId = "bone_saw", DisplayName = "Bone Saw", Description = "Field amputation. The only guaranteed way to stop a spreading bite.",
+        Category = ItemCategory.Tool, MaxStack = 1, WeightKg = 1.4f,
+        IconColor = new Color(0.75f, 0.75f, 0.8f)
+    };
 
     // ── Registry ─────────────────────────────────────────────────────────────
     // Built lazily so the list is independent of static field declaration order.
@@ -145,8 +163,16 @@ public partial class ItemData : Resource
     public static IReadOnlyList<ItemData> All => _all ??= new List<ItemData>
     {
         _bandage, _medKit, _foodCan, _waterBottle, _scrap, _cloth, _woodPlank,
-        _nails, _rope, _ammo9mm, _ammo12g, _shovel, _fuelCan, _molotov
+        _nails, _rope, _ammo9mm, _ammo12g, _shovel, _fuelCan, _molotov,
+        _tourniquet, _antibiotics, _saw
     };
+
+    /// <summary>Infection treatment item.</summary>
+    public static ItemData Tourniquet => _tourniquet;
+    /// <summary>Infection treatment item.</summary>
+    public static ItemData Antibiotics => _antibiotics;
+    /// <summary>Field amputation tool.</summary>
+    public static ItemData BoneSaw => _saw;
 
     /// <summary>Look an item up by its <see cref="ItemId"/>. Returns null if unknown.</summary>
     public static ItemData? Find(string itemId)

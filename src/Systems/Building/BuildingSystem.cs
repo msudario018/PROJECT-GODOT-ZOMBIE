@@ -19,6 +19,8 @@ public partial class BuildingSystem : Node3D
     [Export] public PackedScene? ScrapWoodFenceScene;
     [Export] public PackedScene? ChainLinkWallScene;
     [Export] public PackedScene? DoorScene;
+    [Export] public PackedScene? LogPalisadeScene;
+    [Export] public PackedScene? CorrugatedMetalScene;
 
     [ExportGroup("Grid Tuning")]
     [Export] public float GridSnap = 2.0f;
@@ -46,8 +48,10 @@ public partial class BuildingSystem : Node3D
         ScrapWoodFenceScene ??= GD.Load<PackedScene>("res://scenes/world/defenses/walls/ScrapWoodFence.tscn");
         ChainLinkWallScene ??= GD.Load<PackedScene>("res://scenes/world/defenses/walls/ChainLinkWall.tscn");
         DoorScene ??= GD.Load<PackedScene>("res://scenes/world/defenses/walls/WoodenDoor.tscn");
+        LogPalisadeScene ??= GD.Load<PackedScene>("res://scenes/world/defenses/walls/LogPalisade.tscn");
+        CorrugatedMetalScene ??= GD.Load<PackedScene>("res://scenes/world/defenses/walls/CorrugatedMetal.tscn");
 
-        GD.Print("[BuildingSystem] Ready. Press 1, 2, or 3 to build structures.");
+        GD.Print("[BuildingSystem] Ready. Press 1, 2, 3, 4 or 5 to build structures.");
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -64,6 +68,12 @@ public partial class BuildingSystem : Node3D
                     break;
                 case Key.Key3:
                     SelectBuildType(3);
+                    break;
+                case Key.Key4:
+                    SelectBuildType(4);
+                    break;
+                case Key.Key5:
+                    SelectBuildType(5);
                     break;
                 case Key.R:
                     if (ActiveBuildType > 0)
@@ -167,6 +177,8 @@ public partial class BuildingSystem : Node3D
             1 => ScrapWoodFenceScene,
             2 => ChainLinkWallScene,
             3 => DoorScene,
+            4 => LogPalisadeScene,
+            5 => CorrugatedMetalScene,
             _ => null
         };
 

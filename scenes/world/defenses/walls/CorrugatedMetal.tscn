@@ -1,0 +1,40 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/World/Defenses/WallTiers/CorrugatedMetal.cs" id="1_metal"]
+[ext_resource type="Script" path="res://src/Core/Components/HealthComponent.cs" id="2_health"]
+[ext_resource type="Script" path="res://src/Core/Vision/VisionOccluder.cs" id="3_occluder"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_metal"]
+size = Vector3(2.4, 2.6, 0.35)
+
+[sub_resource type="BoxMesh" id="BoxMesh_metal"]
+size = Vector3(2.4, 2.6, 0.35)
+
+[sub_resource type="StandardMaterial3D" id="Material_metal"]
+albedo_color = Color(0.52, 0.55, 0.58, 1)
+roughness = 0.35
+
+[node name="CorrugatedMetal" type="StaticBody3D"]
+collision_layer = 9
+collision_mask = 0
+script = ExtResource("1_metal")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+shape = SubResource("BoxShape3D_metal")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+mesh = SubResource("BoxMesh_metal")
+surface_material_override/0 = SubResource("Material_metal")
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("2_health")
+MaxHealth = 1600.0
+
+[node name="NavigationObstacle3D" type="NavigationObstacle3D" parent="."]
+radius = 1.4
+avoidance_enabled = true
+
+[node name="VisionOccluder" type="Node3D" parent="."]
+script = ExtResource("3_occluder")

@@ -13,3 +13,6 @@ obj/
 .vs/
 .idea/
 *.sln.docstates
+selftest.log
+arena.log
+

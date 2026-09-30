@@ -63,15 +63,29 @@ public partial class ZombieBase : CharacterBody3D
 
     public HealthComponent Health => _health ??= GetNode<HealthComponent>("HealthComponent");
     public SensorySystem Sensory => _sensory ??= GetNode<SensorySystem>("SensorySystem");
-    public AudioEmitterComponent AudioEmitter => _audioEmitter ??= GetNode<AudioEmitterComponent>("AudioEmitterComponent");
+
+    /// <summary>
+    /// Optional: a zombie spawned without a voice or a body (a headless test
+    /// fixture, a placeholder) must still run, so these are soft lookups.
+    /// </summary>
+    public AudioEmitterComponent? AudioEmitter
+        => _audioEmitter ??= GetNodeOrNull<AudioEmitterComponent>("AudioEmitterComponent");
+
     public StateMachine StateMachine => _stateMachine ??= GetNode<StateMachine>("StateMachine");
     public NavigationAgent3D NavAgent => _navAgent ??= GetNode<NavigationAgent3D>("NavigationAgent3D");
-    public Node3D Mesh => _mesh ??= GetNode<Node3D>("Mesh");
+    public Node3D? Mesh => _mesh ??= GetNodeOrNull<Node3D>("Mesh");
 
     // Runtime state
     public bool IsDead => Health != null && !Health.IsAlive;
     public Vector3 KnockbackVelocity = Vector3.Zero;
     private static SpatialGrid? _sharedSpatialGrid;
+
+    /// <summary>Where this zombie was told to investigate (scream, scent, gunshot).</summary>
+    public Vector3 AlertPosition { get; private set; }
+    /// <summary>Seconds of alert remaining before it returns to idle.</summary>
+    public float AlertTimer { get; private set; }
+    /// <summary>True while an external alert is driving this zombie.</summary>
+    public bool IsAlerted => AlertTimer > 0f;
 
     public static SpatialGrid SharedSpatialGrid => _sharedSpatialGrid ??= new SpatialGrid(4.0f);
 
@@ -97,6 +111,9 @@ public partial class ZombieBase : CharacterBody3D
     public override void _PhysicsProcess(double delta)
     {
         float dt = (float)delta;
+
+        // Count down any external alert (scream, scent handoff).
+        if (AlertTimer > 0f) AlertTimer = Mathf.Max(0f, AlertTimer - dt);
 
         // Apply downward gravity
         if (!IsOnFloor())
@@ -129,9 +146,12 @@ public partial class ZombieBase : CharacterBody3D
         direction.Y = 0f;
         if (direction.LengthSquared() < 0.001f) return;
 
+        // Bodyless zombies (test fixtures) still turn logically, just not visually.
+        if (Mesh is not { } body) return;
+
         float targetAngle = Mathf.Atan2(direction.X, direction.Z);
-        float currentAngle = Mesh.Rotation.Y;
-        Mesh.Rotation = new Vector3(0f, Mathf.LerpAngle(currentAngle, targetAngle, TurnSpeed * delta), 0f);
+        float currentAngle = body.Rotation.Y;
+        body.Rotation = new Vector3(0f, Mathf.LerpAngle(currentAngle, targetAngle, TurnSpeed * delta), 0f);
     }
 
     /// <summary>
@@ -152,6 +172,28 @@ public partial class ZombieBase : CharacterBody3D
         * (Core.Autoloads.ConfigManager.Instance?.ZombieSpeedMultiplier ?? 1f)
         * (Core.Autoloads.TimeManager.Instance?.ZombieNightMultiplier ?? 1f)
         * (World.Environment.WeatherSystem.Instance?.HordePressureMultiplier ?? 1f);
+
+    /// <summary>
+    /// Send this zombie to investigate a position for a while. Used by the
+    /// Screamer's sector alert and by the hounds closing on a scent trail.
+    /// Safe to call on a dead or despawned zombie.
+    /// </summary>
+    public void AlertTo(Vector3 position, float durationSeconds = 20f)
+    {
+        if (IsDead) return;
+
+        AlertPosition = position;
+        AlertTimer = Mathf.Max(AlertTimer, durationSeconds);
+
+        // GetNodeOrNull, not the StateMachine property: alerting must never throw
+        // on a partially constructed zombie (e.g. a bare node in a test), and a
+        // throw inside _Ready would leave the game with no way to quit.
+        var machine = GetNodeOrNull<Core.StateMachine.StateMachine>("StateMachine");
+        machine?.TransitionTo("Alert", new System.Collections.Generic.Dictionary<string, Variant>
+        {
+            { "TargetPos", position }
+        });
+    }
 
     public bool ShouldUseFlowField()
     {
