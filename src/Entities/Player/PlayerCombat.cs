@@ -21,6 +21,14 @@ public partial class PlayerCombat : Node3D
     /// <summary>Player combat raycast mask: world + zombies + obstacles + survivors + bandits.</summary>
     [Export(PropertyHint.Layers3DPhysics)] public uint CombatHitMask = 1 | 4 | 8 | 16 | 32;
 
+    [ExportGroup("Aiming")]
+    /// <summary>Muzzle height above the player's feet (matches the aim plane).</summary>
+    [Export] public float MuzzleHeight = 1.2f;
+    /// <summary>How far in front of the body the muzzle sits, clearing the capsule.</summary>
+    [Export] public float MuzzleForwardOffset = 0.8f;
+    /// <summary>Allow bullets to pass through friendly survivors instead of hitting them.</summary>
+    [Export] public bool NoFriendlyFire = true;
+
     // Equipped weapons
     private readonly List<WeaponData> _weapons = new();
     private readonly List<int> _currentMags = new();
@@ -252,6 +260,32 @@ public partial class PlayerCombat : Node3D
         GD.Print($"[PlayerCombat] Reload complete. {CurrentMag}/{CurrentReserve}");
     }
 
+    /// <summary>
+    /// Bodies the bullet ray must pass through: the player (whose capsule the
+    /// muzzle sits just outside of) and, with <see cref="NoFriendlyFire"/>, the
+    /// player's own allies. Without this a shot can register on the shooter or
+    /// on a survivor standing in the line of fire.
+    /// </summary>
+    private void ApplyRaycastExclusions(PhysicsRayQueryParameters3D query)
+    {
+        var excluded = new Godot.Collections.Array<Rid>();
+
+        if (_player != null && GodotObject.IsInstanceValid(_player))
+            excluded.Add(_player.GetRid());
+
+        if (NoFriendlyFire)
+        {
+            foreach (var node in GetTree().GetNodesInGroup("survivors"))
+            {
+                if (node is CollisionObject3D body && GodotObject.IsInstanceValid(body))
+                    excluded.Add(body.GetRid());
+            }
+        }
+
+        if (excluded.Count > 0)
+            query.Exclude = excluded;
+    }
+
     private void ExecuteRangedAttack()
     {
         if (CurrentMag <= 0)
@@ -268,8 +302,20 @@ public partial class PlayerCombat : Node3D
         // Acoustic signature (gunshots attract zombies across large areas!)
         _audioEmitter?.EmitGunshot(CurrentWeapon.IsSuppressed);
 
-        Vector3 aimDir = _player.GetAimDirection();
-        Vector3 muzzlePos = _player.GlobalPosition + Vector3.Up * 1.2f + aimDir * 0.6f;
+        // ── Aiming ────────────────────────────────────────────────
+        // The muzzle sits at weapon height, pushed out in front of the player's
+        // capsule so the very first ray segment cannot start inside our own body.
+        Vector3 aimTarget = _player.GetAimTargetPoint();
+        Vector3 aimDir = MathUtils.HorizontalDirectionTo(_player.GlobalPosition, aimTarget);
+        if (aimDir.LengthSquared() < 0.001f)
+            aimDir = _player.GetAimDirection();
+        if (aimDir.LengthSquared() < 0.001f)
+            return;   // nothing to aim at; do not waste the round
+
+        Vector3 muzzlePos = _player.GlobalPosition
+                            + Vector3.Up * MuzzleHeight
+                            + aimDir * MuzzleForwardOffset;
+
         var space = GetWorld3D()?.DirectSpaceState;
         if (space == null) return;
 
@@ -278,15 +324,18 @@ public partial class PlayerCombat : Node3D
 
         for (int p = 0; p < pellets; p++)
         {
-            Vector3 shootDir = aimDir;
-            if (spreadRad > 0.001f)
-            {
-                float angleOffset = (float)GD.RandRange(-spreadRad, spreadRad);
-                shootDir = shootDir.Rotated(Vector3.Up, angleOffset);
-            }
+            // Spread is built from a horizontal forward/right basis so the cone
+            // stays flat on the XZ plane; no vertical dispersion.
+            Vector3 shootDir = spreadRad > 0.001f
+                ? MathUtils.SpreadHorizontal(aimDir, (float)GD.RandRange(-spreadRad, spreadRad))
+                : aimDir;
 
             Vector3 rayEnd = muzzlePos + shootDir * CurrentWeapon.Range;
             var query = PhysicsRayQueryParameters3D.Create(muzzlePos, rayEnd, CombatHitMask);
+            query.CollideWithAreas = false;
+            query.CollideWithBodies = true;
+            ApplyRaycastExclusions(query);
+
             var hit = space.IntersectRay(query);
 
             Vector3 hitPos = rayEnd;

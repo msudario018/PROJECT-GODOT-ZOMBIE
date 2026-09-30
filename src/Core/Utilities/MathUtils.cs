@@ -15,28 +15,77 @@ public static class MathUtils
     public const float IsometricYawDeg = -45f;
 
     /// <summary>
-    /// Project screen coordinates onto the world ground plane (Y=0) through an isometric camera.
-    /// Used for mouse-based aiming, placement previews, and click-to-move targets.
+    /// Project screen coordinates onto a horizontal world plane at a given height.
+    /// This is the single source of truth for mouse aiming: the plane is the one
+    /// the weapon actually fires along, not the world origin plane.
+    ///
+    /// Never returns <see cref="Vector3.Zero"/> as a failure signal — a miss
+    /// (ray parallel to, or pointing away from, the plane) falls back to a point
+    /// in front of the camera instead, because callers feed the result straight
+    /// into an aim direction and an origin fallback aims at the world origin.
     /// </summary>
-    /// <param name="camera">The orthographic isometric Camera3D.</param>
+    /// <param name="camera">The Camera3D doing the projection.</param>
     /// <param name="screenPos">Screen-space coordinates (e.g., mouse position).</param>
-    /// <returns>World position on the Y=0 plane, or Vector3.Zero if the ray is parallel to the plane.</returns>
-    public static Vector3 ScreenToWorldIso(Camera3D camera, Vector2 screenPos)
+    /// <param name="planeHeight">World Y of the target plane (weapon height).</param>
+    public static Vector3 ScreenToWorldOnPlane(Camera3D camera, Vector2 screenPos, float planeHeight)
     {
-        var rayOrigin = camera.ProjectRayOrigin(screenPos);
-        var rayDir = camera.ProjectRayNormal(screenPos);
+        if (camera == null || !GodotObject.IsInstanceValid(camera))
+            return Vector3.Zero;
 
-        // Intersect with the Y=0 horizontal ground plane
-        if (Mathf.Abs(rayDir.Y) > 0.0001f)
-        {
-            float t = -rayOrigin.Y / rayDir.Y;
-            if (t >= 0f)
-            {
-                return rayOrigin + rayDir * t;
-            }
-        }
+        Vector3 rayOrigin = camera.ProjectRayOrigin(screenPos);
+        Vector3 rayDir = camera.ProjectRayNormal(screenPos);
 
-        return Vector3.Zero;
+        var plane = new Plane(Vector3.Up, planeHeight);
+
+        // IntersectsRay returns null when the ray is parallel to the plane.
+        var hit = plane.IntersectsRay(rayOrigin, rayDir);
+        if (hit.HasValue)
+            return hit.Value;
+
+        // Degenerate ray: keep a stable point in front of the camera along the
+        // same screen ray, projected onto the plane by its dominant axis.
+        Vector3 flat = rayDir;
+        flat.Y = 0f;
+        if (flat.LengthSquared() < 0.0001f) flat = -camera.GlobalTransform.Basis.Z;
+        flat = flat.Normalized();
+        return rayOrigin + flat * 10f;
+    }
+
+    /// <summary>
+    /// Project screen coordinates onto the world ground plane (Y=0).
+    /// Prefer <see cref="ScreenToWorldOnPlane"/> with the weapon's height.
+    /// </summary>
+    public static Vector3 ScreenToWorldIso(Camera3D camera, Vector2 screenPos)
+        => ScreenToWorldOnPlane(camera, screenPos, 0f);
+
+    /// <summary>
+    /// Aim direction from a muzzle to a world target, constrained to the XZ
+    /// plane: bullets travel horizontally toward the cursor, so the vertical
+    /// component of the muzzle/target height difference is discarded.
+    /// </summary>
+    public static Vector3 HorizontalDirectionTo(Vector3 muzzle, Vector3 target)
+    {
+        Vector3 dir = target - muzzle;
+        dir.Y = 0f;
+        return dir.LengthSquared() > 0.0001f ? dir.Normalized() : Vector3.Zero;
+    }
+
+    /// <summary>
+    /// Cone spread around a horizontal forward vector, computed entirely in the
+    /// XZ plane. Rotating a 3D vector around Y tilts it off the plane, which is
+    /// what makes shotgun pellets drift vertically; building the direction from
+    /// an explicit forward/right basis keeps the cone flat.
+    /// </summary>
+    /// <param name="forwardXZ">Normalized forward direction on the XZ plane.</param>
+    /// <param name="angleRadians">Signed angle from forward, in radians.</param>
+    public static Vector3 SpreadHorizontal(Vector3 forwardXZ, float angleRadians)
+    {
+        Vector3 forward = new Vector3(forwardXZ.X, 0f, forwardXZ.Z);
+        if (forward.LengthSquared() < 0.0001f) forward = Vector3.Forward;
+        forward = forward.Normalized();
+
+        Vector3 right = forward.Cross(Vector3.Up).Normalized();
+        return (forward * Mathf.Cos(angleRadians) + right * Mathf.Sin(angleRadians)).Normalized();
     }
 
     /// <summary>

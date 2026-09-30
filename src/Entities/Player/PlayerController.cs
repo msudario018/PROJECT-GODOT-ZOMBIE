@@ -312,24 +312,37 @@ public partial class PlayerController : CharacterBody3D
     // ════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Get the world position on the ground plane (Y=0) under the mouse cursor.
-    /// Used for aiming, placement previews, and click-to-move.
+    /// Height of the plane the player aims on: the weapon's line of fire, not
+    /// the world floor. Aiming at the floor makes the shot climb toward the
+    /// camera-height cursor point and drift as the player moves.
     /// </summary>
-    public Vector3 GetMouseWorldPosition()
+    [Export] public float AimPlaneHeight = 1.2f;
+
+    /// <summary>
+    /// The world point the player is aiming at: the mouse cursor projected onto
+    /// the weapon-height plane. This is the target bullets are fired at.
+    /// </summary>
+    public Vector3 GetAimTargetPoint()
     {
-        return MathUtils.ScreenToWorldIso(_camera, GetViewport().GetMousePosition());
+        return MathUtils.ScreenToWorldOnPlane(
+            _camera, GetViewport().GetMousePosition(), GlobalPosition.Y + AimPlaneHeight);
     }
 
     /// <summary>
-    /// Get the normalized direction from the player to the mouse cursor on the ground plane.
-    /// Used for ranged weapon aiming.
+    /// Get the world position on the aim plane under the mouse cursor.
+    /// Used for aiming, placement previews, and click-to-move.
+    /// </summary>
+    public Vector3 GetMouseWorldPosition() => GetAimTargetPoint();
+
+    /// <summary>
+    /// Get the normalized direction from the player to the mouse cursor, flattened
+    /// onto the XZ plane. Bullets travel horizontally, so the Y component of the
+    /// target/muzzle height difference is discarded rather than tilting the shot.
     /// </summary>
     public Vector3 GetAimDirection()
     {
-        var mouseWorld = GetMouseWorldPosition();
-        var dir = mouseWorld - GlobalPosition;
-        dir.Y = 0f;
-        return dir.LengthSquared() > 0.001f ? dir.Normalized() : _lastFacingDirection;
+        Vector3 dir = MathUtils.HorizontalDirectionTo(GlobalPosition, GetAimTargetPoint());
+        return dir.LengthSquared() > 0.001f ? dir : _lastFacingDirection;
     }
 
     /// <summary>

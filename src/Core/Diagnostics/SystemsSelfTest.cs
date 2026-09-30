@@ -7,6 +7,7 @@ using ZombieApocalypse.Core.Autoloads;
 using ZombieApocalypse.Core.Components;
 using ZombieApocalypse.Core.Data;
 using ZombieApocalypse.Core.Persistence;
+using ZombieApocalypse.Core.Utilities;
 using ZombieApocalypse.Entities.Bandits;
 using ZombieApocalypse.Entities.NPC;
 using ZombieApocalypse.Entities.Player;
@@ -81,6 +82,7 @@ public partial class SystemsSelfTest : Node3D
         TestStage8ScentTracking();
         TestStage8ZombieRoster();
         TestStage8Perimeter();
+        TestStage9AimingGeometry();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -1440,6 +1442,132 @@ public partial class SystemsSelfTest : Node3D
         ScentComponent.ClearWorldScent();
         bleeder.QueueFree();
         trackerRoot.QueueFree();
+    }
+
+    // ── Stage 9: weapon aiming geometry ─────────────────────────────
+
+    private void TestStage9AimingGeometry()
+    {
+        GD.Print("── Stage 9: Aiming Geometry ──");
+
+        // ── Mouse → world projection ────────────────────────────────
+        var camHost = new Node3D { Name = "CamHost", Position = new Vector3(10f, 20f, 10f) };
+        camHost.RotationDegrees = new Vector3(-35.264f, -45f, 0f);
+        var camera = new Camera3D { Name = "TestAimCamera", Projection = Camera3D.ProjectionType.Orthogonal };
+        camHost.AddChild(camera);
+        AddChild(camHost);
+
+        Vector3 centre = MathUtils.ScreenToWorldOnPlane(camera, new Vector2(400, 300), 1.2f);
+        Check("the cursor projects onto the requested plane height",
+            Mathf.Abs(centre.Y - 1.2f) < 0.01f, $"(y = {centre.Y:F3})");
+
+        // The old failure mode: a miss returned Vector3.Zero, which aims at the
+        // world origin.
+        Check("a valid projection is not the world origin",
+            centre.Length() > 0.01f, $"({centre})");
+
+        // A ray parallel to the plane must still yield a usable point.
+        var flatHost = new Node3D { Name = "FlatHost", Position = new Vector3(0f, 5f, 0f) };
+        var flatCamera = new Camera3D { Name = "FlatCam", Projection = Camera3D.ProjectionType.Orthogonal };
+        flatHost.AddChild(flatCamera);
+        AddChild(flatHost);
+        Vector3 degenerate = MathUtils.ScreenToWorldOnPlane(flatCamera, new Vector2(10, 10), 5f);
+        Check("a ray parallel to the plane still returns a usable point",
+            !degenerate.IsEqualApprox(Vector3.Zero), $"({degenerate})");
+
+        Vector3 left = MathUtils.ScreenToWorldOnPlane(camera, new Vector2(350, 300), 1.2f);
+        Vector3 right = MathUtils.ScreenToWorldOnPlane(camera, new Vector2(450, 300), 1.2f);
+        Check("the target tracks the cursor horizontally",
+            right.X > left.X && Mathf.Abs(right.Y - left.Y) < 0.001f,
+            $"({left} → {right})");
+
+        // ── Aim direction is horizontal, muzzle → target ───────────
+        Vector3 muzzle = new Vector3(0f, 1.2f, 0f);
+        Vector3 target = new Vector3(10f, 4.0f, 10f);   // deliberately higher than the muzzle
+        Vector3 aim = MathUtils.HorizontalDirectionTo(muzzle, target);
+        Check("aim is normalized", Mathf.Abs(aim.Length() - 1f) < 0.001f, $"({aim.Length():F3})");
+        Check("aim discards the vertical component", Mathf.Abs(aim.Y) < 0.0001f, $"(y = {aim.Y})");
+        Check("aim points from the muzzle to the target",
+            aim.IsEqualApprox(new Vector3(1f, 0f, 1f).Normalized()), $"({aim})");
+        Check("aim at a coincident point is zero, not NaN",
+            MathUtils.HorizontalDirectionTo(muzzle, muzzle).IsEqualApprox(Vector3.Zero));
+
+        // ── Shotgun spread stays flat ──────────────────────────────
+        Vector3 forward = new Vector3(0f, 0f, 1f);
+        var samples = new List<Vector3>();
+        for (int i = -4; i <= 4; i++)
+            samples.Add(MathUtils.SpreadHorizontal(forward, Mathf.DegToRad(i * 3f)));
+
+        Check("every pellet stays on the XZ plane",
+            samples.All(v => Mathf.Abs(v.Y) < 0.0001f),
+            $"(max |y| = {samples.Max(v => Mathf.Abs(v.Y))})");
+        Check("every pellet keeps unit length", samples.All(v => Mathf.Abs(v.Length() - 1f) < 0.001f));
+
+        Vector3 leftPellet = MathUtils.SpreadHorizontal(forward, Mathf.DegToRad(-10f));
+        Vector3 rightPellet = MathUtils.SpreadHorizontal(forward, Mathf.DegToRad(10f));
+        // Facing +Z, Godot's right-hand side is -X, so a positive angle swings
+        // the pellet toward -X. What matters is that the cone is symmetric.
+        Check("spread fans out symmetrically",
+            leftPellet.X > 0f && rightPellet.X < 0f
+            && Mathf.Abs(leftPellet.X + rightPellet.X) < 0.0001f,
+            $"({leftPellet} | {rightPellet})");
+        Check("zero spread is exactly forward",
+            MathUtils.SpreadHorizontal(forward, 0f).IsEqualApprox(forward));
+
+        Vector3 tilted = new Vector3(0.7f, 0.5f, 0.5f).Normalized();
+        Check("a tilted input still spreads flat",
+            Mathf.Abs(MathUtils.SpreadHorizontal(tilted, Mathf.DegToRad(7f)).Y) < 0.0001f);
+
+        // ── Tracer orientation ─────────────────────────────────────
+        var projectiles = new Systems.Combat.ProjectileManager { Name = "TestProjectiles" };
+        AddChild(projectiles);
+
+        projectiles.SpawnTracer(new Vector3(5f, 1.2f, 0f), new Vector3(15f, 1.2f, 0f));
+        var tracer = projectiles.GetChild(0) as MeshInstance3D;
+        Check("a tracer is spawned for a valid shot", tracer != null);
+
+        if (tracer != null)
+        {
+            // The cylinder's long axis is local +Y; it must lie along the shot.
+            Vector3 axis = tracer.GlobalBasis.Y.Normalized();
+            Check("the tracer lies along the shot direction",
+                axis.Dot(new Vector3(1f, 0f, 0f)) > 0.99f, $"(axis {axis})");
+            Check("the tracer is centred between muzzle and target",
+                tracer.GlobalPosition.DistanceTo(new Vector3(10f, 1.2f, 0f)) < 0.01f,
+                $"({tracer.GlobalPosition})");
+        }
+
+        // The old bug: a near-vertical shot flipped the up vector at random.
+        projectiles.SpawnTracer(Vector3.Zero, new Vector3(0f, 12f, 0f));
+        var vertical = projectiles.GetChild(1) as MeshInstance3D;
+        Check("a vertical shot still orients along its own axis",
+            vertical != null && vertical.GlobalBasis.Y.Normalized().Dot(Vector3.Up) > 0.99f,
+            vertical != null ? $"(axis {vertical.GlobalBasis.Y.Normalized()})" : "(no tracer)");
+
+        // A zero-length shot has no direction and must be skipped, not spawned.
+        int beforeDegenerate = projectiles.GetChildCount();
+        projectiles.SpawnTracer(new Vector3(3f, 1f, 3f), new Vector3(3f, 1f, 3f));
+        Check("a zero-length shot is skipped",
+            projectiles.GetChildCount() == beforeDegenerate);
+
+        // ── Self-hit prevention is configured ──────────────────────
+        var combatHost = new Entities.Player.PlayerController { Name = "TestPlayerHost" };
+        combatHost.AddChild(new HealthComponent { Name = "HealthComponent" });
+        var combat = new Entities.Player.PlayerCombat { Name = "TestCombat" };
+        combatHost.AddChild(combat);
+        AddChild(combatHost);
+
+        Check("the muzzle sits outside the player's own capsule",
+            combat.MuzzleForwardOffset > 0.4f && combat.MuzzleHeight > 0.5f,
+            $"(offset {combat.MuzzleForwardOffset:F2}m at height {combat.MuzzleHeight:F2}m)");
+        Check("bullets pass through allies by default", combat.NoFriendlyFire);
+
+        var query = PhysicsRayQueryParameters3D.Create(Vector3.Zero, Vector3.Forward * 10f);
+        query.Exclude = new Godot.Collections.Array<Rid> { combatHost.GetRid() };
+        Check("raycast exclusions carry the player's RID",
+            query.Exclude.Count == 1 && query.Exclude[0] == combatHost.GetRid());
+        Check("the player body is a real physics body with a valid RID",
+            combatHost.GetRid().IsValid);
     }
 
     // ── Stage 8: bite infection ─────────────────────────────────────

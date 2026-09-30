@@ -44,7 +44,7 @@ public partial class ProjectileManager : Node3D
         var tracer = new MeshInstance3D();
         var diff = end - start;
         float length = diff.Length();
-        if (length < 0.1f) return;
+        if (length < 0.001f) return;   // zero-length: no meaningful direction
 
         var cylinder = new CylinderMesh
         {
@@ -55,18 +55,28 @@ public partial class ProjectileManager : Node3D
         tracer.Mesh = cylinder;
         tracer.MaterialOverride = _tracerMaterial;
 
-        // Position at midpoint and orient along trajectory
-        tracer.Position = (start + end) * 0.5f;
-
-        Vector3 up = Vector3.Up;
-        Vector3 forward = diff.Normalized();
-        if (Mathf.Abs(forward.Dot(up)) > 0.99f)
-            up = Vector3.Forward;
-
-        tracer.LookAt(end, up);
-        tracer.RotateObjectLocal(Vector3.Right, Mathf.Pi * 0.5f);
-
+        // Must be in the tree before assigning a global transform.
         AddChild(tracer);
+
+        // Orient in global space, with the cylinder's local +Y laid directly along
+        // the shot. The basis is assembled explicitly rather than via LookAt +
+        // RotateObjectLocal, because Node3D.Rotate* and Basis.Rotated rotate in
+        // parent space, not around the node's own axis — which is what made
+        // tracers point somewhere unrelated to where the bullet went.
+        Vector3 direction = diff / length;
+
+        Vector3 yAxis = direction;                                  // length axis
+        Vector3 xAxis = Vector3.Up.Cross(yAxis).Normalized();
+        if (xAxis.LengthSquared() < 0.0001f)
+            xAxis = Vector3.Forward.Cross(yAxis).Normalized();      // straight up/down
+        if (xAxis.LengthSquared() < 0.0001f)
+            xAxis = Vector3.Right;
+
+        Vector3 zAxis = xAxis.Cross(yAxis).Normalized();            // completes the set
+        tracer.GlobalBasis = new Basis(xAxis, yAxis, zAxis);
+
+        // Position at the midpoint, in global space.
+        tracer.GlobalPosition = (start + end) * 0.5f;
 
         var tween = CreateTween();
         tween.TweenProperty(tracer, "scale", new Vector3(0.1f, 1f, 0.1f), 0.06f);
