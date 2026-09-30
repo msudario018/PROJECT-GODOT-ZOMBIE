@@ -68,6 +68,7 @@ public partial class LootContainer : StaticBody3D
     private InventoryComponent? _targetInventory;
     private MeshInstance3D? _mesh;
     private Label3D?        _label;
+    private Color _originalColor = new(0.6f, 0.6f, 0.6f);
 
     /// <summary>
     /// Per-instance loot table. Set by <see cref="SetAirdropLoot"/> so airdrop
@@ -138,8 +139,15 @@ public partial class LootContainer : StaticBody3D
             };
 
             var mat = new StandardMaterial3D { AlbedoColor = crateColor, Roughness = 0.7f };
+            _originalColor = crateColor;
             _mesh.MaterialOverride = mat;
             AddChild(_mesh);
+        }
+        else
+        {
+            // Pre-authored mesh (scene instance): remember its colour for restore.
+            if (_mesh.GetActiveMaterial(0) is StandardMaterial3D existing)
+                _originalColor = existing.AlbedoColor;
         }
 
         var col = GetNodeOrNull<CollisionShape3D>("Collision");
@@ -220,14 +228,75 @@ public partial class LootContainer : StaticBody3D
     /// </summary>
     public void SetAirdropLoot(int medKits, int ammoPacks, int foodCans, int cloth)
     {
-        IsAirdropCache = true;
-        _overrideTable = new List<LootEntry>
+        SetFixedManifest(new List<LootEntry>
         {
             new(ItemData.MedKit,      medKits,   medKits,   1.0f),
             new(ItemData.Ammo9mm,     ammoPacks, ammoPacks, 1.0f),
             new(ItemData.FoodCan,     foodCans,  foodCans,  1.0f),
             new(ItemData.Cloth,       cloth,     cloth,     1.0f),
-        };
+        }, restrictedForNpcs: true);
+    }
+
+    /// <summary>
+    /// Install a fixed per-instance manifest (bandit drops, survivor deposits,
+    /// airdrops) and optionally keep NPC scavengers/looters away from it.
+    /// Re-opens the container when it was already searched.
+    /// </summary>
+    public void SetFixedManifest(IEnumerable<LootEntry> entries, bool restrictedForNpcs)
+    {
+        var list = new List<LootEntry>(entries);
+        if (list.Count == 0) return;
+
+        IsAirdropCache = restrictedForNpcs;
+
+        // Merge into an untouched manifest; otherwise replace a searched-out one.
+        if (_overrideTable != null && !IsSearched)
+            _overrideTable.AddRange(list);
+        else
+            _overrideTable = list;
+
+        IsSearching = false;
+        IsSearched = false;
+        _searchTimer = 0f;
+
+        if (_mesh?.GetActiveMaterial(0) is StandardMaterial3D mat)
+            mat.AlbedoColor = _originalColor;
+        if (_label != null)
+        {
+            _label.Text = $"[E] Search {ContainerLabel}";
+            _label.Modulate = Colors.White;
+        }
+    }
+
+    /// <summary>
+    /// Transfer every item from a donor inventory into this container and
+    /// re-open it so the player can take them back out. Used by survivor
+    /// scavengers delivering loot to the camp stockpile.
+    /// </summary>
+    public bool TryDeposit(InventoryComponent donor)
+    {
+        if (IsSearching) return false;
+
+        var moved = new List<(ItemData item, int qty)>();
+        foreach (var slot in donor.Slots)
+        {
+            if (slot.Item == null || slot.Quantity <= 0) continue;
+            moved.Add((slot.Item, slot.Quantity));
+        }
+        if (moved.Count == 0) return false;
+
+        var entries = new List<LootEntry>();
+        foreach (var (item, qty) in moved)
+        {
+            int removed = donor.TryRemove(item.ItemId, qty);
+            if (removed > 0)
+                entries.Add(new LootEntry(item, removed, removed, 1f));
+        }
+        if (entries.Count == 0) return false;
+
+        SetFixedManifest(entries, restrictedForNpcs: true);
+        GD.Print($"[LootContainer] {ContainerLabel} received {entries.Count} deposit stack(s).");
+        return true;
     }
 
     private static int CountItems(InventoryComponent inventory)

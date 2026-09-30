@@ -42,6 +42,7 @@ public partial class PlayerController : CharacterBody3D
     private ZombieApocalypse.Core.Components.AudioEmitterComponent? _audioEmitter;
     private PlayerStats? _playerStats;
     private ZombieApocalypse.Core.Components.InventoryComponent? _inventory;
+    private ZombieApocalypse.Core.Components.HealthComponent? _health;
 
     // ── Runtime State ──────────────────────────────────────────────
     private Vector3 _moveDirection;
@@ -74,6 +75,13 @@ public partial class PlayerController : CharacterBody3D
         _playerStats = GetNodeOrNull<PlayerStats>("PlayerStats");
         _inventory = GetNodeOrNull<ZombieApocalypse.Core.Components.InventoryComponent>("InventoryComponent");
 
+        var health = GetNodeOrNull<ZombieApocalypse.Core.Components.HealthComponent>("HealthComponent");
+        if (health != null)
+        {
+            _health = health;
+            health.Died += OnPlayerDied;
+        }
+
         SetupIsometricCamera();
 
         GD.Print("[PlayerController] Ready. Isometric camera configured.");
@@ -86,6 +94,18 @@ public partial class PlayerController : CharacterBody3D
     {
         float dt = (float)delta;
 
+        // Dead players collapse in place until restart ([P]).
+        if (_health != null && !_health.IsAlive)
+        {
+            var v = Velocity;
+            v.X = 0f;
+            v.Z = 0f;
+            Velocity = v;
+            ApplyGravity(dt);
+            MoveAndSlide();
+            return;
+        }
+
         ReadMovementInput();
         ApplyGravity(dt);
         ApplyMovement(dt);
@@ -96,6 +116,14 @@ public partial class PlayerController : CharacterBody3D
 
         // Broadcast position for systems that track the player (FoW, acoustic, etc.)
         EventBus.Instance?.EmitPlayerMoved(GlobalPosition);
+    }
+
+    private void OnPlayerDied()
+    {
+        _isSprinting = false;
+        _playerStats?.SetSprinting(false);
+        GameManager.Instance?.HandlePlayerDeath();
+        GD.Print("[PlayerController] You died. Press [P] to restart.");
     }
 
     private void UpdateFootsteps(float dt)

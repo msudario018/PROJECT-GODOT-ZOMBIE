@@ -64,6 +64,7 @@ public partial class WallBase : StaticBody3D
         EventBus.Instance?.EmitNavObstacleAdded(GlobalPosition);
 
         AddToGroup("walls");
+        AddToGroup("nav_geometry");   // runtime NavigationBaker bakes holes for walls
         GD.Print($"[WallBase] Placed {WallName} (Tier {WallTier}, HP: {MaxDurability}) at {GlobalPosition}.");
     }
 

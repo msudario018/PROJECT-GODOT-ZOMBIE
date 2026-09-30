@@ -17,6 +17,7 @@ public partial class TestArenaHUD
     private Label? _moraleLabel;
     private Label? _npcLabel;
     private Label? _airdropLabel;
+    private Label? _deathLabel;
 
     private MoraleSystem? _moraleSystem;
     private SurvivorBase? _demoSurvivor;
@@ -47,6 +48,19 @@ public partial class TestArenaHUD
         _airdropLabel.AddThemeColorOverride("font_color", new Color(1.0f, 0.7f, 0.25f));
         _airdropLabel.Visible = false;
         vbox.AddChild(_airdropLabel);
+
+        // Full-screen death banner (Phase 1-6 fix: player death → GameOver)
+        _deathLabel = new Label
+        {
+            Text = "YOU DIED\nPress [P] to restart",
+            Visible = false,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+        _deathLabel.AddThemeFontSizeOverride("font_size", 42);
+        _deathLabel.AddThemeColorOverride("font_color", new Color(0.9f, 0.15f, 0.15f));
+        _deathLabel.SetAnchorsPreset(Control.LayoutPreset.CenterTop);
+        _deathLabel.OffsetTop = 220;
+        AddChild(_deathLabel);
 
         CachePhase7Nodes();
 
@@ -84,6 +98,10 @@ public partial class TestArenaHUD
             if (_airdropBannerTimer <= 0f && _airdropLabel != null)
                 _airdropLabel.Visible = false;
         }
+
+        if (_deathLabel != null)
+            _deathLabel.Visible =
+                Core.Autoloads.GameManager.Instance?.CurrentState == Core.Data.GameState.GameOver;
     }
 
     partial void HandlePhase7Key(InputEventKey key)

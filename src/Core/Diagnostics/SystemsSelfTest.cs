@@ -67,6 +67,7 @@ public partial class SystemsSelfTest : Node3D
         TestPhase7SurvivorTasks();
         TestPhase7BanditSquad();
         TestPhase7Airdrop();
+        TestStage1WiringFixes();
 
         GD.Print("═══════════════════════════════════════════════");
         GD.Print($"  RESULT: {_passed} passed, {_failed} failed");
@@ -523,6 +524,96 @@ public partial class SystemsSelfTest : Node3D
                 banditsNearDrop++;
         }
         Check("raiders contest the drop zone", banditsNearDrop >= 2, $"({banditsNearDrop} nearby)");
+    }
+
+    // ── Stage 1: integration fixes ─────────────────────────────────────
+
+    private void TestStage1WiringFixes()
+    {
+        GD.Print("── Stage 1: Wiring Fixes ──");
+
+        var ally = GetTree().GetFirstNodeInGroup("survivors") as SurvivorBase;
+        Check("survivors use their own physics layer",
+            ally != null && ally.CollisionLayer == 16, $"(layer {ally?.CollisionLayer})");
+
+        var bandit = GetTree().GetFirstNodeInGroup("bandits") as BanditBase;
+        Check("bandits use their own physics layer",
+            bandit != null && bandit.CollisionLayer == 32, $"(layer {bandit?.CollisionLayer})");
+
+        // Zombie senses must pick up NPCs, not only the player.
+        var sensor = new ZombieApocalypse.Entities.Zombies.ZombieAI.SensorySystem { Name = "TestSensor" };
+        var focusTarget = SurvivorBase.FindThreatNear(ally!.GlobalPosition, 50f);   // keep the API exercised
+        var probe = new Node3D { Name = "SensorProbe", Position = ally.GlobalPosition + new Vector3(3f, 0f, 0f) };
+        AddChild(probe);
+        probe.AddChild(sensor);
+        sensor._PhysicsProcess(0.2);
+        Check("zombie senses a nearby survivor (not just the player)",
+            sensor.CurrentTarget is SurvivorBase,
+            $"(target {sensor.CurrentTarget?.Name ?? "none"})");
+        Check("threat search finds a zombie or bandit, never an ally",
+            focusTarget == null || focusTarget is BanditBase,
+            $"(threat {focusTarget?.Name ?? "none"})");
+
+        // Bandit death must leave a searchable cache behind.
+        var spawner = new BanditSpawner { Name = "DropTestSpawner" };
+        AddChild(spawner);
+        var dropper = spawner.SpawnSquadAt(BanditTier.Militia, 1, new Vector3(14f, 0f, 14f)).Members[0];
+        dropper.Inventory!.TryAdd(ItemData.FoodCan, 2);
+        int cachesBefore = GetTree().GetNodesInGroup("loot_containers").Count;
+        dropper.Health.Kill();
+        int cachesAfter = GetTree().GetNodesInGroup("loot_containers").Count;
+        Check("bandit death spawns a lootable raider cache", cachesAfter > cachesBefore,
+            $"({cachesBefore} → {cachesAfter})");
+
+        LootContainer? cache = null;
+        foreach (var node in GetTree().GetNodesInGroup("loot_containers"))
+        {
+            if (node is LootContainer candidate && candidate.Name.ToString().Contains("Drop"))
+                cache = candidate;
+        }
+        var takerInv = new InventoryComponent { Name = "StageOneInv", GrantStartingItems = false };
+        AddChild(takerInv);
+        Check("raider cache holds the bandit's carried loot",
+            cache != null && cache.ForceSearch(takerInv) && takerInv.CountOf("food_can") == 2,
+            $"({takerInv.CountOf("food_can")} cans)");
+
+        // Survivors deliver scavenge to the camp stockpile.
+        var stockpile = new LootContainer
+        {
+            Name = "StageOneStockpile",
+            ContainerLabel = "Camp Stockpile",
+            ContainerType = LootContainer.ContainerArchetype.GeneralJunk,
+            Position = new Vector3(6f, 0f, 6f),
+        };
+        AddChild(stockpile);
+        stockpile.AddToGroup("camp_stockpile");
+
+        Check("stockpile is hidden from NPC scavenging",
+            SurvivorBase.FindUnsearchedContainer(stockpile.GlobalPosition, 5f) != stockpile);
+        Check("stockpile is discoverable for deliveries",
+            SurvivorBase.FindStockpile(stockpile.GlobalPosition, 5f) == stockpile);
+
+        int carriedBefore = ally.Inventory!.TotalItemCount();
+        bool deposited = stockpile.TryDeposit(ally.Inventory);
+        Check("survivor deposit moves loot into the stockpile",
+            deposited && ally.Inventory.TotalItemCount() == 0 && carriedBefore > 0,
+            $"({carriedBefore} items moved)");
+        Check("stockpile reopens for the player to withdraw",
+            !stockpile.IsSearched && stockpile.ForceSearch(takerInv));
+
+        // Component-driven interaction contract.
+        var machine = new Node3D { Name = "StageOneMachine" };
+        AddChild(machine);
+        var interactable = new InteractableComponent { Name = "InteractableComponent", Prompt = "[E] Use Machine" };
+        bool fired = false;
+        interactable.Interacted += _ => fired = true;
+        machine.AddChild(interactable);
+
+        Check("interactable component self-joins the interactables group",
+            machine.IsInGroup("interactables"));
+        Check("interactable component resolves its prompt",
+            interactable.GetPrompt() == "[E] Use Machine");
+        Check("interactable component runs its callback", interactable.Interact(ally) && fired);
     }
 
     /// <summary>Total number of items across every inventory slot.</summary>

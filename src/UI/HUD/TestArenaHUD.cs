@@ -39,6 +39,11 @@ public partial class TestArenaHUD : CanvasLayer
     private Label _zombieCountLabel = null!;
     private Label _statusLabel = null!;
 
+    // Group counts are cached at 2 Hz instead of polled every frame.
+    private float _countRefresh;
+    private int _cachedZombieCount;
+    private int _cachedMiasmaCount;
+
     // ── Player Component References ──────────────────────────────────
     private HealthComponent? _playerHealth;
     private PlayerStats? _playerStats;
@@ -85,11 +90,17 @@ public partial class TestArenaHUD : CanvasLayer
 
     public override void _Process(double delta)
     {
+        _countRefresh -= (float)delta;
+        if (_countRefresh <= 0f)
+        {
+            _countRefresh = 0.5f;
+            _cachedZombieCount = GetTree().GetNodesInGroup("zombies").Count;
+            _cachedMiasmaCount = CorpseManager.Instance?.GetActiveMiasmaCount() ?? 0;
+        }
+
         // 1. Zombie & Miasma Status
-        int zombieCount = GetTree().GetNodesInGroup("zombies").Count;
-        int miasmaCount = CorpseManager.Instance?.GetActiveMiasmaCount() ?? 0;
-        _zombieCountLabel.Text = $"Active Zombies: {zombieCount} | Toxic Miasma Zones: {miasmaCount}";
-        if (miasmaCount > 0)
+        _zombieCountLabel.Text = $"Active Zombies: {_cachedZombieCount} | Toxic Miasma Zones: {_cachedMiasmaCount}";
+        if (_cachedMiasmaCount > 0)
             _zombieCountLabel.AddThemeColorOverride("font_color", new Color(0.95f, 0.45f, 0.2f));
         else
             _zombieCountLabel.AddThemeColorOverride("font_color", new Color(0.85f, 0.4f, 0.4f));

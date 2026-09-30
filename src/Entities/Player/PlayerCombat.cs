@@ -17,7 +17,9 @@ public partial class PlayerCombat : Node3D
     [Signal] public delegate void WeaponChangedEventHandler(string weaponName);
     [Signal] public delegate void AmmoChangedEventHandler(int currentMag, int reserve);
 
-    [Export(PropertyHint.Layers3DPhysics)] public uint CombatHitMask = 1 | 4 | 8; // Layer 1 (World), Layer 3 (Zombies), Layer 4 (Obstacles)
+    [ExportGroup("Combat")]
+    /// <summary>Player combat raycast mask: world + zombies + obstacles + survivors + bandits.</summary>
+    [Export(PropertyHint.Layers3DPhysics)] public uint CombatHitMask = 1 | 4 | 8 | 16 | 32;
 
     // Equipped weapons
     private readonly List<WeaponData> _weapons = new();

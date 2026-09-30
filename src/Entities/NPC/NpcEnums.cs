@@ -15,6 +15,8 @@ public enum SurvivorTask
     RefuelPower = 4,
     /// <summary>Heal the most injured ally, including the player.</summary>
     Heal = 5,
+    /// <summary>Haul carried scavenge back to the camp stockpile.</summary>
+    Deliver = 6,
 }
 
 /// <summary>Playable survivor archetype. Each maps to combat / support stat presets.</summary>

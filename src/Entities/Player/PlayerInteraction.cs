@@ -88,6 +88,19 @@ public partial class PlayerInteraction : Node3D
     {
         if (interactable == null || !GodotObject.IsInstanceValid(interactable)) return;
 
+        // Preferred path: self-describing InteractableComponent.
+        var interactableComponent = interactable.GetNodeOrNull<InteractableComponent>("InteractableComponent");
+        if (interactableComponent != null)
+        {
+            var label = GetPromptLabel(interactable);
+            if (label != null)
+            {
+                label.Text = interactableComponent.GetPrompt();
+                label.Visible = interactableComponent.IsAvailableTo(_player);
+            }
+            return;
+        }
+
         if (interactable is LootContainer container)
         {
             container.ShowPrompt(true);
@@ -111,6 +124,13 @@ public partial class PlayerInteraction : Node3D
     {
         if (interactable == null || !GodotObject.IsInstanceValid(interactable)) return;
 
+        if (interactable.GetNodeOrNull<InteractableComponent>("InteractableComponent") != null)
+        {
+            var label = GetPromptLabel(interactable);
+            if (label != null) label.Visible = false;
+            return;
+        }
+
         if (interactable is LootContainer container)
         {
             container.ShowPrompt(false);
@@ -129,6 +149,14 @@ public partial class PlayerInteraction : Node3D
     {
         var closest = FindClosestInteractable();
         if (closest == null) return;
+
+        // 0. Component-driven interactables describe themselves.
+        var interactableComponent = closest.GetNodeOrNull<InteractableComponent>("InteractableComponent");
+        if (interactableComponent != null)
+        {
+            interactableComponent.Interact(_player);
+            return;
+        }
 
         // 1. Loot Container
         if (closest is LootContainer container)
@@ -163,6 +191,20 @@ public partial class PlayerInteraction : Node3D
             door.ToggleDoor();
             return;
         }
+    }
+
+    /// <summary>Prompt label used by component-driven interactables.</summary>
+    private static Label3D? GetPromptLabel(Node3D node)
+    {
+        var label = node.GetNodeOrNull<Label3D>("PromptLabel") ?? node.GetNodeOrNull<Label3D>("Label");
+        if (label != null && !label.Visible && string.IsNullOrEmpty(label.Text))
+        {
+            label.Text = "[E] Interact";
+            label.Position = new Vector3(0f, 1.4f, 0f);
+            label.Billboard = BaseMaterial3D.BillboardModeEnum.Enabled;
+            label.FontSize = 22;
+        }
+        return label;
     }
 
     private void HandleCorpseInteraction(Corpse corpse)

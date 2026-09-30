@@ -2,6 +2,8 @@ using Godot;
 using System.Collections.Generic;
 using ZombieApocalypse.Core.Autoloads;
 using ZombieApocalypse.Entities.NPC;
+using ZombieApocalypse.World.Environment;
+using ZombieApocalypse.World.Power;
 
 namespace ZombieApocalypse.Entities.Survivors;
 
@@ -98,7 +100,21 @@ public partial class MoraleSystem : Node
         if (_recalcTimer > 0f) return;
         _recalcTimer = 1.0f;
 
-        Recalculate(1.0f);
+        // Sample the live world instead of safe defaults so morale actually
+        // reacts to the camp's condition.
+        int miasmaZones = CorpseManager.Instance?.GetActiveMiasmaCount() ?? 0;
+
+        bool powerOnline = PowerGrid.Instance == null
+            || PowerGrid.Instance.TotalGenerationWatts > 0.5f
+            || PowerGrid.Instance.BatteryPercent > 0.02f;
+
+        float hungerFraction = 1f;
+        var player = GetTree().GetFirstNodeInGroup("player") as Node;
+        var stats = player?.GetNodeOrNull<Entities.Player.PlayerStats>("PlayerStats");
+        if (stats != null)
+            hungerFraction = Mathf.Clamp(stats.Hunger / 100f, 0f, 1f);
+
+        Recalculate(1.0f, hungerFraction, miasmaZones, powerOnline);
     }
 
     /// <summary>

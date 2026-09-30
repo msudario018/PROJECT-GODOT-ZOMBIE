@@ -40,6 +40,7 @@ public partial class SurvivorAI : Node
 
         if (TryStartDefend()) return;
         if (TryStartHeal()) return;
+        if (TryStartDeliver()) return;
 
         SurvivorTask mode = _survivor.TaskMode;
         if (mode == SurvivorTask.Scavenge && TryStartScavenge()) return;
@@ -93,6 +94,21 @@ public partial class SurvivorAI : Node
         if (crate == null) return false;
 
         _survivor.SetTask(SurvivorTask.Scavenge, crate, crate.GlobalPosition);
+        return true;
+    }
+
+    /// <summary>
+    /// Empty the survivor's pack into the camp stockpile before starting new work.
+    /// </summary>
+    private bool TryStartDeliver()
+    {
+        if (_survivor == null) return false;
+        if ((_survivor.Inventory?.TotalItemCount() ?? 0) <= 0) return false;
+
+        var stockpile = SurvivorBase.FindStockpile(_survivor.GlobalPosition, SurvivorBase.LootSearchRadius);
+        if (stockpile == null) return false;
+
+        _survivor.SetTask(SurvivorTask.Deliver, stockpile, stockpile.GlobalPosition);
         return true;
     }
 

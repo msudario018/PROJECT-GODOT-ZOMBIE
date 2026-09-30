@@ -65,6 +65,10 @@ public partial class SurvivorBase : CharacterBody3D
 
     public override void _EnterTree()
     {
+        // Physics layers: 1=World, 2=Player, 3=Zombies, 5=Survivors, 6=Bandits
+        CollisionLayer = 16;              // layer 5
+        CollisionMask = 1 | 2 | 4 | 16 | 32;
+
         EnsureChild<HealthComponent>("HealthComponent");
         EnsureChild<InventoryComponent>("InventoryComponent");
         EnsureChild<ZombieApocalypse.Entities.Zombies.ZombieAI.SensorySystem>("SensorySystem");
@@ -138,6 +142,7 @@ public partial class SurvivorBase : CharacterBody3D
             case SurvivorTask.Repair: TickRepair(dt); break;
             case SurvivorTask.RefuelPower: TickRefuel(dt); break;
             case SurvivorTask.Heal: TickHeal(dt); break;
+            case SurvivorTask.Deliver: TickDeliver(dt); break;
             default: TickIdle(dt); break;
         }
 
@@ -255,6 +260,32 @@ public partial class SurvivorBase : CharacterBody3D
         {
             _healCooldown = 4.0f;
             HealAlly(ally);
+        }
+    }
+
+    /// <summary>Carry scavenged goods to the camp stockpile and deposit them.</summary>
+    private void TickDeliver(float dt)
+    {
+        if (TaskTarget is not LootContainer stockpile || !GodotObject.IsInstanceValid(stockpile))
+        {
+            SetTask(SurvivorTask.Idle, null, CampAnchor);
+            return;
+        }
+
+        int carried = Inventory?.TotalItemCount() ?? 0;
+        if (carried == 0)
+        {
+            SetTask(SurvivorTask.Idle, null, CampAnchor);
+            return;
+        }
+
+        MoveToward(stockpile.GlobalPosition, MoveSpeed * TaskSpeedMultiplier, dt);
+
+        if (DistanceTo(stockpile) <= TaskReachDistance && Inventory != null)
+        {
+            if (stockpile.TryDeposit(Inventory))
+                GD.Print($"[Survivor] {SurvivorName} stocked the camp supplies.");
+            SetTask(SurvivorTask.Idle, null, CampAnchor);
         }
     }
 
@@ -439,12 +470,38 @@ public partial class SurvivorBase : CharacterBody3D
             if (node is not LootContainer crate || !GodotObject.IsInstanceValid(crate)) continue;
             if (crate.IsSearched || crate.IsSearching) continue;
             if (crate.IsAirdropCache) continue;
+            // The camp stockpile is our own store — never scavenge it back.
+            if (crate.IsInGroup("camp_stockpile")) continue;
 
             float distSq = ZombieApocalypse.Core.Utilities.MathUtils.DistanceSquaredXZ(from, crate.GlobalPosition);
             if (distSq < bestSq)
             {
                 bestSq = distSq;
                 best = crate;
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>Locate the camp stockpile containers (group "camp_stockpile").</summary>
+    public static LootContainer? FindStockpile(Vector3 from, float radius)
+    {
+        var tree = Engine.GetMainLoop() as SceneTree;
+        if (tree == null) return null;
+
+        LootContainer? best = null;
+        float bestSq = radius * radius;
+
+        foreach (var node in tree.GetNodesInGroup("camp_stockpile"))
+        {
+            if (node is not LootContainer pile || !GodotObject.IsInstanceValid(pile)) continue;
+
+            float distSq = ZombieApocalypse.Core.Utilities.MathUtils.DistanceSquaredXZ(from, pile.GlobalPosition);
+            if (distSq < bestSq)
+            {
+                bestSq = distSq;
+                best = pile;
             }
         }
 

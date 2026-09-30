@@ -49,6 +49,10 @@ public partial class BanditBase : CharacterBody3D
 
     public override void _EnterTree()
     {
+        // Physics layers: 1=World, 2=Player, 3=Zombies, 5=Survivors, 6=Bandits
+        CollisionLayer = 32;              // layer 6
+        CollisionMask = 1 | 2 | 4 | 16 | 32;
+
         EnsureChild<HealthComponent>("HealthComponent");
         EnsureChild<InventoryComponent>("InventoryComponent");
         EnsureChild<AudioEmitterComponent>("AudioEmitterComponent");
@@ -309,8 +313,14 @@ public partial class BanditBase : CharacterBody3D
     /// <summary>Ranged shot with tracer + impact feedback.</summary>
     public void FireRanged(Node3D foe)
     {
-        Vector3 muzzle = GlobalPosition + Vector3.Up * 1.4f;
         Vector3 target = foe.GlobalPosition + Vector3.Up * 1.0f;
+        Vector3 muzzle = GlobalPosition + Vector3.Up * 1.4f;
+
+        // Start the ray outside our own capsule so we can't shoot ourselves.
+        Vector3 initial = target - muzzle;
+        if (initial.LengthSquared() > 0.01f)
+            muzzle += initial.Normalized() * 0.7f;
+
         Vector3 dir = target - muzzle;
         float dist = dir.Length();
         if (dist < 0.01f) return;
@@ -323,7 +333,8 @@ public partial class BanditBase : CharacterBody3D
         var space = GetWorld3D()?.DirectSpaceState;
         if (space != null)
         {
-            var query = PhysicsRayQueryParameters3D.Create(muzzle, muzzle + dir * maxRange, 1u | 2u | 4u);
+            var query = PhysicsRayQueryParameters3D.Create(muzzle, muzzle + dir * maxRange,
+                1u | 2u | 4u | 16u | 32u);
             var hit = space.IntersectRay(query);
             if (hit.Count > 0)
             {
@@ -480,20 +491,50 @@ public partial class BanditBase : CharacterBody3D
         CombatState = BanditCombatState.Dead;
         Velocity = Vector3.Zero;
 
-        if (Inventory != null)
-        {
-            foreach (var stack in Inventory.Slots)
-            {
-                if (stack.Item == null || stack.Quantity <= 0) continue;
-                GD.Print($"[Bandit] {BanditName} dropped {stack.Quantity}× {stack.Item.DisplayName}.");
-            }
-        }
-
+        DropLoot();
         Squad?.NotifyMemberDied(this);
         AudioEmitter?.EmitCustomSound(12.0f, AudioSourceType.VoiceHuman);
         GD.Print($"[Bandit] {BanditName} ({Tier}) killed at {GlobalPosition}.");
 
         _deathTimer = 3.0f;
+    }
+
+    /// <summary>
+    /// Spawn a searchable cache holding everything the raider carried, so the
+    /// player can actually loot the body (previously the drop was log-only).
+    /// </summary>
+    private void DropLoot()
+    {
+        if (Inventory == null) return;
+
+        var entries = new List<Systems.Loot.LootEntry>();
+        var carried = new List<(ItemData item, int qty)>();
+        foreach (var stack in Inventory.Slots)
+        {
+            if (stack.Item == null || stack.Quantity <= 0) continue;
+            carried.Add((stack.Item, stack.Quantity));
+        }
+        if (carried.Count == 0) return;
+
+        foreach (var (item, qty) in carried)
+        {
+            int removed = Inventory.TryRemove(item.ItemId, qty);
+            if (removed > 0) entries.Add(new Systems.Loot.LootEntry(item, removed, removed, 1f));
+        }
+        if (entries.Count == 0) return;
+
+        var cache = new Systems.Loot.LootContainer
+        {
+            Name = $"{Name}_Drop",
+            ContainerLabel = "Raider Cache",
+            ContainerType = Systems.Loot.LootContainer.ContainerArchetype.GeneralJunk,
+            Position = GlobalPosition,
+        };
+
+        var parent = GetTree()?.CurrentScene ?? GetParent();
+        parent?.AddChild(cache);
+        cache.SetFixedManifest(entries, restrictedForNpcs: true);
+        GD.Print($"[Bandit] {BanditName} dropped {entries.Count} stack(s) as a raider cache.");
     }
 
     private void TickRetreat(float dt)

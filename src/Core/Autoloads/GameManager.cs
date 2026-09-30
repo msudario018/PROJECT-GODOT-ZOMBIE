@@ -38,7 +38,26 @@ public partial class GameManager : Node
         {
             TogglePause();
             GetViewport().SetInputAsHandled();
+            return;
         }
+
+        // Restart from the death screen
+        if (CurrentState == GameState.GameOver && @event.IsActionPressed("restart"))
+        {
+            GetTree().Paused = false;
+            CurrentState = GameState.Playing;
+            GetTree().ReloadCurrentScene();
+            GD.Print("[GameManager] Restarting scene after death.");
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    /// <summary>Called when the player's HealthComponent dies.</summary>
+    public void HandlePlayerDeath()
+    {
+        if (CurrentState == GameState.GameOver) return;
+        SetState(GameState.GameOver);
+        GD.Print("[GameManager] PLAYER DIED — press [P] to restart.");
     }
 
     // ── Game State ─────────────────────────────────────────────────
@@ -101,6 +120,7 @@ public partial class GameManager : Node
         RegisterAction("pause",     Key.Escape);
         RegisterAction("inventory", Key.Tab);
         RegisterAction("map",       Key.M);
+        RegisterAction("restart",   Key.P);
 
         // ── Mouse Attack & Action ──
         RegisterMouseAction("attack",                MouseButton.Left);

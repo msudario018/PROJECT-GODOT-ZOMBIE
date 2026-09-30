@@ -77,37 +77,71 @@ public partial class SensorySystem : Node3D
     }
 
     /// <summary>
-    /// Scans for potential targets (e.g., players) in the scene.
+    /// Scans for the nearest valid prey: the player, survivors and bandits
+    /// are all potential targets (previously zombies only ever saw the player).
     /// </summary>
     private void ScanForTargets()
     {
-        var player = GetTree().GetFirstNodeInGroup("player") as Node3D;
-        if (player == null || !GodotObject.IsInstanceValid(player))
+        var tree = GetTree();
+        Node3D? bestDetected = null;
+        Vector3 bestPos = Vector3.Zero;
+        float bestDistSq = float.MaxValue;
+
+        foreach (var group in new[] { "player", "survivors", "bandits" })
         {
-            if (HasTarget)
+            foreach (var node in tree.GetNodesInGroup(group))
             {
-                CurrentTarget = null;
-                EmitSignal(SignalName.TargetLost);
+                if (node is not Node3D candidate || !GodotObject.IsInstanceValid(candidate)) continue;
+                if (candidate is Zombies.ZombieBase) continue;
+                if (candidate is Survivors.SurvivorBase survivor && !survivor.IsAlive) continue;
+                if (candidate is Bandits.BanditBase bandit && bandit.IsDead) continue;
+
+                var health = candidate.GetNodeOrNull<Core.Components.HealthComponent>("HealthComponent");
+                if (health != null && !health.IsAlive) continue;
+
+                Vector3 myPos = GlobalPosition;
+                Vector3 targetPos = candidate.GlobalPosition;
+                float distSq = MathUtils.DistanceSquaredXZ(myPos, targetPos);
+                if (distSq >= bestDistSq) continue;
+
+                if (!DetectCandidate(myPos, targetPos, distSq)) continue;
+
+                bestDistSq = distSq;
+                bestDetected = candidate;
+                bestPos = targetPos;
             }
-            return;
         }
 
-        Vector3 myPos = GlobalPosition;
-        Vector3 targetPos = player.GlobalPosition;
-        float distSq = MathUtils.DistanceSquaredXZ(myPos, targetPos);
+        if (bestDetected != null)
+        {
+            LastKnownTargetPosition = bestPos;
+            if (CurrentTarget != bestDetected)
+            {
+                CurrentTarget = bestDetected;
+                EmitSignal(SignalName.TargetSpotted, bestDetected);
+            }
+        }
+        else if (CurrentTarget != null)
+        {
+            CurrentTarget = null;
+            EmitSignal(SignalName.TargetLost);
+        }
+    }
 
-        bool detected = false;
+    /// <summary>Proximity + vision-cone + line-of-sight check for one candidate.</summary>
+    private bool DetectCandidate(Vector3 myPos, Vector3 targetPos, float distSq)
+    {
         float sightRange = EffectiveSightRange;
 
         // 1. Proximity check (immediate awareness in close radius)
         if (distSq <= ProximityRange * ProximityRange)
         {
-            detected = CheckLineOfSight(myPos, targetPos);
+            return CheckLineOfSight(myPos, targetPos);
         }
+
         // 2. Vision cone check
-        else if (distSq <= sightRange * sightRange)
+        if (distSq <= sightRange * sightRange)
         {
-            // Calculate forward direction in XZ plane
             Vector3 forward = -GlobalTransform.Basis.Z;
             forward.Y = 0f;
             if (forward.LengthSquared() > 0.001f)
@@ -117,26 +151,12 @@ public partial class SensorySystem : Node3D
 
                 if (MathUtils.IsInCone(myPos, facingAngle, halfAngleRad, targetPos, sightRange))
                 {
-                    detected = CheckLineOfSight(myPos, targetPos);
+                    return CheckLineOfSight(myPos, targetPos);
                 }
             }
         }
 
-        if (detected)
-        {
-            LastKnownTargetPosition = targetPos;
-            if (CurrentTarget != player)
-            {
-                CurrentTarget = player;
-                EmitSignal(SignalName.TargetSpotted, player);
-            }
-        }
-        else if (CurrentTarget != null)
-        {
-            // If lost line of sight or out of range
-            CurrentTarget = null;
-            EmitSignal(SignalName.TargetLost);
-        }
+        return false;
     }
 
     /// <summary>

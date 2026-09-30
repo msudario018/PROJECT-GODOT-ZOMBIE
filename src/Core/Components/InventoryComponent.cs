@@ -183,6 +183,16 @@ public partial class InventoryComponent : Node
 
     public bool Has(string itemId, int quantity = 1) => CountOf(itemId) >= quantity;
 
+    /// <summary>Total number of items across every slot (used by NPC hauling logic).</summary>
+    public int TotalItemCount()
+    {
+        EnsureInitialized();
+        int total = 0;
+        for (int i = 0; i < SlotCount; i++)
+            total += _slots[i].Quantity;
+        return total;
+    }
+
     /// <summary>Read-only snapshot of all slots for UI rendering.</summary>
     public IReadOnlyList<ItemStack> Slots
     {
